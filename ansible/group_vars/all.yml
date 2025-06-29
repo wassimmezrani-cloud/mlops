@@ -1,0 +1,81 @@
+---
+# Global variables for all hosts
+ansible_python_interpreter: /usr/bin/python3
+kubernetes_version: "1.31.4"
+containerd_version: "1.7.27"
+
+# Kubernetes cluster configuration (shared across all k8s nodes)
+k8s_version: "1.31.4"
+k8s_control_plane_endpoint: "10.110.190.21:6443"
+
+# Network configuration
+pod_network_cidr: "10.244.0.0/16"
+service_cidr: "10.96.0.0/12"
+
+# Ingress NodePorts (from actual cluster inspection)
+ingress_http_nodeport: 32624
+ingress_https_nodeport: 31316
+
+# Common packages
+common_packages:
+  - curl
+  - wget
+  - vim
+  - htop
+  - net-tools
+  - git
+  - unzip
+  - apt-transport-https
+  - ca-certificates
+  - gnupg
+  - lsb-release
+
+# Server hostnames (gathered from SSH)
+server_hostnames:
+  haproxy-1: "haproxy"
+  master-1: "k8s-master-1"
+  master-2: "k8s-master-2"
+  master-3: "k8s-master-3"
+  worker-1: "k8s-worker-1"
+  worker-2: "k8s-worker-2"
+  worker-3: "k8s-worker-3"
+
+# System information (from actual servers)
+os_distribution: "Ubuntu"
+os_version: "24.04.2"
+kernel_version: "6.8.0-53-generic"
+architecture: "x86_64"
+
+# Network interface
+primary_interface: "ens3"
+
+# SSH configuration
+ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
+
+# Certificate configuration
+ssl_cert_dir: "/etc/ssl/certs"
+ca_certificates_file: "/etc/ssl/certs/ca-certificates.crt"
+
+# Time and timezone
+timezone: "UTC"
+
+# Package management
+package_update_cache: true
+package_upgrade: false
+
+# Monitoring configuration (Prometheus stack)
+monitoring_namespace: "monitoring"
+prometheus_operator_version: "v0.68.0"
+prometheus_nodeport: 30900
+grafana_nodeport: 30300
+grafana_admin_password: "admin"
+
+# Container runtime configuration
+container_runtime: "containerd"
+containerd_config_file: "/etc/containerd/config.toml"
+containerd_systemd_cgroup: true
+
+# CNI Configuration (Flannel)
+cni_plugin: "flannel"
+flannel_backend_type: "vxlan"
+flannel_mtu: 1450

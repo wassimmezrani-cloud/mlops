@@ -1,0 +1,33 @@
+---
+# Test connectivity and basic information gathering
+- name: Test Infrastructure Connectivity
+  hosts: all
+  gather_facts: true
+  tasks:
+    - name: Test connectivity
+      ping:
+
+    - name: Gather system information
+      debug:
+        msg: |
+          Host: {{ inventory_hostname }}
+          OS: {{ ansible_distribution }} {{ ansible_distribution_version }}
+          Architecture: {{ ansible_architecture }}
+          IP: {{ ansible_default_ipv4.address }}
+          Kernel: {{ ansible_kernel }}
+
+    - name: Check disk space
+      shell: df -h /
+      register: disk_usage
+
+    - name: Display disk usage
+      debug:
+        var: disk_usage.stdout_lines
+
+    - name: Check memory
+      shell: free -h
+      register: memory_usage
+
+    - name: Display memory usage
+      debug:
+        var: memory_usage.stdout_lines

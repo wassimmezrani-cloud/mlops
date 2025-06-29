@@ -1,0 +1,113 @@
+---
+# Kubernetes cluster variables (based on actual cluster inspection)
+k8s_cluster_name: "mlops-cluster"
+k8s_version: "1.31.4"
+k8s_api_server_port: 6443
+k8s_node_port_range: "30000-32767"
+
+# Control plane endpoint (HAProxy IP:port format)
+k8s_control_plane_endpoint: "10.110.190.21:6443"
+
+# Container runtime (actual: containerd)
+container_runtime: containerd
+container_runtime_version: "1.7.27"
+
+# CNI Plugin (actual: flannel)
+cni_plugin: flannel
+flannel_version: "latest"
+
+# Ingress Controller (actual: nginx)
+ingress_controller: nginx
+ingress_http_nodeport: 32624
+ingress_https_nodeport: 31316
+
+# Kubernetes components
+kubernetes_packages:
+  - kubelet=1.31.4-1.1
+  - kubeadm=1.31.4-1.1
+  - kubectl=1.31.4-1.1
+
+# Cluster configuration
+cluster_configuration:
+  apiVersion: kubeadm.k8s.io/v1beta3
+  kind: ClusterConfiguration
+  kubernetesVersion: "{{ k8s_version }}"
+  controlPlaneEndpoint: "{{ k8s_control_plane_endpoint }}"
+  networking:
+    podSubnet: "{{ pod_network_cidr }}"
+    serviceSubnet: "{{ service_cidr }}"
+
+# Node specifications
+master_node_count: 3
+worker_node_count: 3
+
+# Service configuration
+kube_dns_ip: "10.96.0.10"
+cluster_dns_domain: "cluster.local"
+
+# System configuration
+os_distribution: "Ubuntu"
+os_version: "24.04.2"
+kernel_version: "6.8.0-53-generic"
+architecture: "x86_64"
+
+# Actual cluster state (verified December 2024)
+cluster_status: "running"
+cluster_nodes_total: 6
+master_nodes_count: 3
+worker_nodes_count: 3
+monitoring_coverage: "100%"
+monitoring_targets_total: 75
+monitoring_targets_up: 75
+
+# Containerd configuration (actual version)
+containerd_config_file: "/etc/containerd/config.toml"
+containerd_systemd_cgroup: true
+containerd_runtime_type: "io.containerd.runc.v2"
+
+# Flannel CNI actual configuration (verified)
+flannel_namespace: "kube-flannel"
+flannel_configmap: "kube-flannel-cfg"
+flannel_backend_type: "vxlan"
+flannel_enable_nftables: false
+flannel_mtu: 1450
+
+# Actual ingress configuration
+ingress_namespace: "ingress-nginx"
+ingress_controller_name: "ingress-nginx-controller"
+ingress_service_type: "NodePort"
+ingress_class_name: "nginx"
+
+# Certificate management
+cert_manager_namespace: "cert-manager"
+enable_cert_manager: false
+
+# Monitoring and logging
+enable_metrics_server: true
+enable_kubernetes_dashboard: false
+
+# Network policies
+enable_network_policies: false
+default_deny_all: false
+
+# Storage configuration
+default_storage_class: "local-path"
+enable_persistent_volumes: true
+
+# Security configuration
+enable_pod_security_policy: false
+enable_rbac: true
+
+# API Server configuration
+api_server_port: 6443
+api_server_secure_port: 6443
+api_server_insecure_port: 0
+
+# Scheduler and Controller Manager
+scheduler_bind_address: "0.0.0.0"
+controller_manager_bind_address: "0.0.0.0"
+
+# etcd configuration
+etcd_data_dir: "/var/lib/etcd"
+etcd_listen_client_urls: "https://127.0.0.1:2379"
+etcd_listen_peer_urls: "https://127.0.0.1:2380"

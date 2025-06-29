@@ -1,0 +1,73 @@
+---
+# Kubernetes worker node tasks
+- name: Install containerd
+  apt:
+    name: containerd.io
+    state: present
+    update_cache: true
+
+- name: Configure containerd
+  shell: |
+    containerd config default | sudo tee /etc/containerd/config.toml
+    sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+  args:
+    creates: /etc/containerd/config.toml
+
+- name: Start and enable containerd
+  systemd:
+    name: containerd
+    state: started
+    enabled: true
+
+- name: Add Kubernetes apt key
+  apt_key:
+    url: https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key
+    state: present
+
+- name: Add Kubernetes repository
+  apt_repository:
+    repo: "deb https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /"
+    state: present
+
+- name: Install Kubernetes components v1.31.4
+  apt:
+    name:
+      - kubelet=1.31.4-1.1
+      - kubeadm=1.31.4-1.1
+    state: present
+    update_cache: true
+
+- name: Hold Kubernetes packages
+  dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+
+- name: Check if node is already joined to cluster
+  shell: kubectl get nodes {{ ansible_hostname }} --kubeconfig=/etc/kubernetes/kubelet.conf
+  register: node_joined
+  ignore_errors: true
+  changed_when: false
+
+- name: Generate join command from master
+  shell: kubeadm token create --print-join-command
+  register: join_command
+  delegate_to: "{{ groups['k8s-masters'][0] }}"
+  when: node_joined.rc != 0
+
+- name: Modify join command to use HAProxy endpoint
+  set_fact:
+    haproxy_join_command: "{{ join_command.stdout | regex_replace('10\\.110\\.190\\.22:6443', k8s_control_plane_endpoint) }}"
+  when: node_joined.rc != 0 and join_command.stdout is defined
+
+- name: Join worker node to cluster via HAProxy
+  shell: "{{ haproxy_join_command }}"
+  register: kubeadm_join_worker
+  when: node_joined.rc != 0 and haproxy_join_command is defined
+
+- name: Display join result
+  debug:
+    var: kubeadm_join_worker.stdout_lines
+  when: kubeadm_join_worker.stdout_lines is defined

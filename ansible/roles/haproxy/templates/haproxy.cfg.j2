@@ -1,0 +1,73 @@
+global
+    daemon
+    log 127.0.0.1:514 local0
+    chroot /var/lib/haproxy
+    stats socket /run/haproxy/admin.sock mode 660 level admin
+    stats timeout 30s
+    user haproxy
+    group haproxy
+
+defaults
+    mode http
+    log global
+    option httplog
+    option dontlognull
+    option log-health-checks
+    option forwardfor
+    option http-server-close
+    timeout connect 10s
+    timeout client 1m
+    timeout server 1m
+
+# Kubernetes API Server Load Balancer
+frontend kubernetes-apiserver-frontend
+    bind *:6443
+    mode tcp
+    option tcplog
+    default_backend kubernetes-apiserver-backend
+
+backend kubernetes-apiserver-backend
+    mode tcp
+    balance roundrobin
+    option tcp-check
+    tcp-check connect
+{% for host in groups['k8s-masters'] %}
+    server {{ host }} {{ hostvars[host]['ansible_host'] }}:6443 check fall 3 rise 2
+{% endfor %}
+
+# Kubernetes Ingress HTTP Load Balancer (NodePort 32624)
+frontend kubernetes-ingress-http-frontend
+    bind *:80
+    mode tcp
+    option tcplog
+    default_backend kubernetes-ingress-http-backend
+
+backend kubernetes-ingress-http-backend
+    mode tcp
+    balance roundrobin
+{% for host in groups['k8s-workers'] %}
+    server {{ host }}-http {{ hostvars[host]['ansible_host'] }}:32624 check fall 3 rise 2
+{% endfor %}
+
+# Kubernetes Ingress HTTPS Load Balancer (NodePort 31316)
+frontend kubernetes-ingress-https-frontend
+    bind *:443
+    mode tcp
+    option tcplog
+    default_backend kubernetes-ingress-https-backend
+
+backend kubernetes-ingress-https-backend
+    mode tcp
+    balance roundrobin
+{% for host in groups['k8s-workers'] %}
+    server {{ host }}-https {{ hostvars[host]['ansible_host'] }}:31316 check fall 3 rise 2
+{% endfor %}
+
+# Stats page
+listen stats
+    bind *:8404
+    stats enable
+    stats uri /stats
+    stats refresh 30s
+    stats admin if TRUE
+    stats auth admin:admin123

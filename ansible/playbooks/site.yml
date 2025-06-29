@@ -1,0 +1,28 @@
+---
+# Main site playbook for MLOps infrastructure
+- name: Configure HAProxy Load Balancer
+  hosts: haproxy
+  become: true
+  roles:
+    - haproxy
+  tags: haproxy
+
+- name: Configure Kubernetes Master Nodes
+  hosts: k8s-masters
+  become: true
+  roles:
+    - common
+    - kubernetes-master
+  tags: k8s-master
+
+- name: Configure Kubernetes Worker Nodes
+  hosts: k8s-workers
+  become: true
+  roles:
+    - common
+    - kubernetes-worker
+  tags: k8s-worker
+
+- name: Install Prometheus Monitoring Stack
+  import_playbook: install-prometheus.yml
+  tags: prometheus
