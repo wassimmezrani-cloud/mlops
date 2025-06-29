@@ -1,7 +1,7 @@
 ---
 - name: Install kube-prometheus Stack
   hosts: k8s-masters[0]
-  become: no
+  become: false
   
   tasks:
     - name: Check if kube-prometheus is already installed
@@ -22,10 +22,12 @@
       when: monitoring_ns_check.resources | length == 0
 
     - name: Install git package for cloning repository
-      apt:
-        name: git
-        state: present
-      become: yes
+      block:
+        - name: Install git package
+          apt:
+            name: git
+            state: present
+      become: true
       delegate_to: localhost
       run_once: true
       when: monitoring_ns_check.resources | length == 0
