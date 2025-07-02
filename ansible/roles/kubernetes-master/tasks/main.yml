@@ -1,5 +1,16 @@
 ---
-# Kubernetes master node tasks (based on actual configuration)
+# Kubernetes master node configuration
+
+- name: Validate required variables
+  assert:
+    that:
+      - k8s_version is defined
+      - k8s_version is match("^\d+\.\d+\.\d+$")
+      - k8s_control_plane_endpoint is defined
+      - pod_network_cidr is defined
+      - service_cidr is defined
+    fail_msg: "Required Kubernetes variables are not properly defined"
+
 - name: Install containerd.io
   apt:
     name: containerd.io
@@ -23,6 +34,7 @@
     regexp: '^\s*SystemdCgroup\s*='
     line: '            SystemdCgroup = true'
     backup: true
+  notify: restart containerd
 
 - name: Start and enable containerd
   systemd:
@@ -41,12 +53,12 @@
     state: present
     filename: kubernetes
 
-- name: Install specific Kubernetes components v1.31.4
+- name: Install specific Kubernetes components
   apt:
     name:
-      - kubelet=1.31.4-1.1
-      - kubeadm=1.31.4-1.1
-      - kubectl=1.31.4-1.1
+      - kubelet={{ k8s_version }}-1.1
+      - kubeadm={{ k8s_version }}-1.1
+      - kubectl={{ k8s_version }}-1.1
     state: present
     update_cache: true
 
@@ -65,6 +77,11 @@
     state: started
     enabled: true
 
+- name: Check if cluster is already initialized
+  stat:
+    path: /etc/kubernetes/admin.conf
+  register: k8s_admin_conf
+
 - name: Initialize Kubernetes cluster (only on first master)
   command: >
     kubeadm init
@@ -74,21 +91,20 @@
     --control-plane-endpoint={{ k8s_control_plane_endpoint }}
     --upload-certs
     --kubernetes-version=v{{ k8s_version }}
-  when: inventory_hostname == groups['k8s-masters'][0]
+  when: 
+    - inventory_hostname == groups['k8s-masters'][0]
+    - not k8s_admin_conf.stat.exists
   register: kubeadm_init
-  ignore_errors: true
 
 - name: Generate join token for cluster
   command: kubeadm token create --print-join-command
   when: inventory_hostname == groups['k8s-masters'][0]
   register: join_command
-  ignore_errors: true
 
 - name: Generate certificate key for control plane
   command: kubeadm init phase upload-certs --upload-certs
   when: inventory_hostname == groups['k8s-masters'][0]
   register: certificate_key_output
-  ignore_errors: true
 
 - name: Extract certificate key
   set_fact:
@@ -108,32 +124,10 @@
     - "'--token ' in join_command.stdout"
     - "'--discovery-token-ca-cert-hash ' in join_command.stdout"
 
-- name: Save join information for future reference
-  copy:
-    content: |
-      # Kubernetes Cluster Join Information
-      # Generated on: {{ ansible_date_time.date }} {{ ansible_date_time.time }}
-      
-      # Control Plane Endpoint
-      CONTROL_PLANE_ENDPOINT={{ k8s_control_plane_endpoint }}
-      
-      # Join Token (expires in 24 hours by default)
-      KUBEADM_TOKEN={{ kubeadm_token | default('FAILED_TO_GENERATE') }}
-      
-      # CA Certificate Hash
-      CA_CERT_HASH={{ ca_cert_hash | default('FAILED_TO_GENERATE') }}
-      
-      # Certificate Key (for control plane nodes)
-      CERTIFICATE_KEY={{ certificate_key | default('FAILED_TO_GENERATE') }}
-      
-      # Worker Join Command:
-      # kubeadm join {{ k8s_control_plane_endpoint }} --token {{ kubeadm_token | default('TOKEN') }} --discovery-token-ca-cert-hash {{ ca_cert_hash | default('HASH') }}
-      
-      # Master Join Command:
-      # kubeadm join {{ k8s_control_plane_endpoint }} --token {{ kubeadm_token | default('TOKEN') }} --discovery-token-ca-cert-hash {{ ca_cert_hash | default('HASH') }} --control-plane --certificate-key {{ certificate_key | default('CERT_KEY') }}
-    dest: "/tmp/kubeadm-join-info.txt"
-    mode: '0600'
-  when: inventory_hostname == groups['k8s-masters'][0]
+- name: Check if additional masters are already joined
+  stat:
+    path: /etc/kubernetes/kubelet.conf
+  register: kubelet_conf
 
 - name: Join additional master nodes to cluster
   command: >
@@ -143,9 +137,10 @@
     --control-plane
     --certificate-key {{ hostvars[groups['k8s-masters'][0]]['certificate_key'] }}
     --apiserver-advertise-address={{ ansible_host }}
-  when: inventory_hostname != groups['k8s-masters'][0]
+  when: 
+    - inventory_hostname != groups['k8s-masters'][0]
+    - not kubelet_conf.stat.exists
   register: kubeadm_join_master
-  ignore_errors: true
 
 - name: Create .kube directory for user
   file:
@@ -165,20 +160,39 @@
     mode: '0644'
   when: inventory_hostname == groups['k8s-masters'][0]
 
-- name: Install Flannel CNI (only on first master)
+- name: Check if Flannel CNI is already installed
+  command: kubectl get daemonset -n kube-flannel kube-flannel-ds
   become_user: "{{ ansible_user }}"
-  command: kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml
+  register: flannel_check
+  failed_when: false
+  changed_when: false
   when: inventory_hostname == groups['k8s-masters'][0]
-  ignore_errors: true
+
+- name: Install Flannel CNI (only on first master)
+  command: kubectl apply -f {{ flannel_url }}
+  become_user: "{{ ansible_user }}"
+  when: 
+    - inventory_hostname == groups['k8s-masters'][0]
+    - flannel_check.rc != 0
+
+- name: Check if NGINX Ingress Controller is already installed
+  command: kubectl get deployment -n ingress-nginx ingress-nginx-controller
+  become_user: "{{ ansible_user }}"
+  register: ingress_check
+  failed_when: false
+  changed_when: false
+  when: inventory_hostname == groups['k8s-masters'][0]
 
 - name: Install NGINX Ingress Controller (only on first master)
+  command: kubectl apply -f {{ ingress_url }}
   become_user: "{{ ansible_user }}"
-  command: kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.8.1/deploy/static/provider/baremetal/deploy.yaml
-  when: inventory_hostname == groups['k8s-masters'][0]
-  ignore_errors: true
+  when: 
+    - inventory_hostname == groups['k8s-masters'][0]
+    - ingress_check.rc != 0
 
 - name: Wait for ingress controller to be ready
-  become_user: "{{ ansible_user }}"
   command: kubectl wait --namespace ingress-nginx --for=condition=ready pod --selector=app.kubernetes.io/component=controller --timeout=300s
-  when: inventory_hostname == groups['k8s-masters'][0]
-  ignore_errors: true
+  become_user: "{{ ansible_user }}"
+  when: 
+    - inventory_hostname == groups['k8s-masters'][0]
+    - ingress_check.rc != 0

@@ -1,0 +1,31 @@
+---
+- name: Convert Services to LoadBalancer
+  hosts: k8s-masters[0]
+  become: true
+  tasks:
+    - name: Convert Prometheus to LoadBalancer
+      become_user: "{{ ansible_user }}"
+      shell: kubectl patch svc prometheus-k8s -n monitoring -p '{"spec":{"type":"LoadBalancer"}}'
+    
+    - name: Convert Grafana to LoadBalancer
+      become_user: "{{ ansible_user }}"
+      shell: kubectl patch svc grafana -n monitoring -p '{"spec":{"type":"LoadBalancer"}}'
+    
+    - name: Convert AlertManager to LoadBalancer
+      become_user: "{{ ansible_user }}"
+      shell: kubectl patch svc alertmanager-main -n monitoring -p '{"spec":{"type":"LoadBalancer"}}'
+    
+    - name: Convert Ingress NGINX to LoadBalancer
+      become_user: "{{ ansible_user }}"
+      shell: kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer","externalTrafficPolicy":"Local"}}'
+    
+    - name: Get LoadBalancer services
+      become_user: "{{ ansible_user }}"
+      shell: kubectl get svc --all-namespaces --field-selector spec.type=LoadBalancer
+      register: services
+      retries: 10
+      delay: 30
+    
+    - name: Show services
+      debug:
+        var: services.stdout_lines

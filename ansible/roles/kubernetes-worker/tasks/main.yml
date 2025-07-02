@@ -48,7 +48,6 @@
 - name: Check if node is already joined to cluster
   shell: kubectl get nodes {{ ansible_hostname }} --kubeconfig=/etc/kubernetes/kubelet.conf
   register: node_joined
-  ignore_errors: true
   changed_when: false
 
 - name: Generate join command from master

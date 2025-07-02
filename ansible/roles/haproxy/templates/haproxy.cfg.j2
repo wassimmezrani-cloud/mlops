@@ -1,23 +1,23 @@
 global
-    daemon
     log 127.0.0.1:514 local0
     chroot /var/lib/haproxy
     stats socket /run/haproxy/admin.sock mode 660 level admin
     stats timeout 30s
     user haproxy
     group haproxy
+    daemon
 
 defaults
-    mode http
+    mode tcp
     log global
-    option httplog
+    option tcplog
     option dontlognull
-    option log-health-checks
-    option forwardfor
-    option http-server-close
-    timeout connect 10s
-    timeout client 1m
-    timeout server 1m
+    option redispatch
+    retries 3
+    timeout connect {{ haproxy_connect_timeout | default('4000ms') }}
+    timeout client {{ haproxy_client_timeout | default('50000ms') }}
+    timeout server {{ haproxy_server_timeout | default('50000ms') }}
+    maxconn 3000
 
 # Kubernetes API Server Load Balancer
 frontend kubernetes-apiserver-frontend
@@ -28,11 +28,11 @@ frontend kubernetes-apiserver-frontend
 
 backend kubernetes-apiserver-backend
     mode tcp
-    balance roundrobin
+    balance {{ balance_method }}
     option tcp-check
     tcp-check connect
 {% for host in groups['k8s-masters'] %}
-    server {{ host }} {{ hostvars[host]['ansible_host'] }}:6443 check fall 3 rise 2
+    server {{ host }} {{ hostvars[host]['ansible_host'] }}:{{ k8s_api_server_port }} check fall {{ health_check_fall }} rise {{ health_check_rise }}
 {% endfor %}
 
 # Kubernetes Ingress HTTP Load Balancer (NodePort 32624)
@@ -44,9 +44,9 @@ frontend kubernetes-ingress-http-frontend
 
 backend kubernetes-ingress-http-backend
     mode tcp
-    balance roundrobin
+    balance {{ balance_method }}
 {% for host in groups['k8s-workers'] %}
-    server {{ host }}-http {{ hostvars[host]['ansible_host'] }}:32624 check fall 3 rise 2
+    server {{ host }}-http {{ hostvars[host]['ansible_host'] }}:{{ ingress_http_nodeport }} check fall {{ health_check_fall }} rise {{ health_check_rise }}
 {% endfor %}
 
 # Kubernetes Ingress HTTPS Load Balancer (NodePort 31316)
@@ -58,16 +58,18 @@ frontend kubernetes-ingress-https-frontend
 
 backend kubernetes-ingress-https-backend
     mode tcp
-    balance roundrobin
+    balance {{ balance_method }}
 {% for host in groups['k8s-workers'] %}
-    server {{ host }}-https {{ hostvars[host]['ansible_host'] }}:31316 check fall 3 rise 2
+    server {{ host }}-https {{ hostvars[host]['ansible_host'] }}:{{ ingress_https_nodeport }} check fall {{ health_check_fall }} rise {{ health_check_rise }}
 {% endfor %}
 
+{% if haproxy_stats_enabled %}
 # Stats page
 listen stats
-    bind *:8404
+    bind *:{{ haproxy_stats_port }}
     stats enable
-    stats uri /stats
+    stats uri {{ haproxy_stats_uri }}
     stats refresh 30s
     stats admin if TRUE
-    stats auth admin:admin123
+    stats auth {{ haproxy_stats_user }}:{{ haproxy_stats_password }}
+{% endif %}

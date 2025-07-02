@@ -1,0 +1,5 @@
+---
+disable_swap: true
+enable_ipv4_forward: true
+bridge_nf_call_iptables: true
+system_timezone: "Europe/Paris"

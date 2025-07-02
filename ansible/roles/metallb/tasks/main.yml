@@ -1,0 +1,17 @@
+---
+- name: Install MetalLB namespace
+  become_user: "{{ ansible_user }}"
+  command: kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml
+  when: inventory_hostname == groups['k8s-masters'][0]
+  register: metallb_install
+
+- name: Wait for MetalLB controller
+  become_user: "{{ ansible_user }}"
+  command: kubectl wait --namespace metallb-system --for=condition=ready pod --selector=app=metallb --timeout=300s
+  when: inventory_hostname == groups['k8s-masters'][0]
+
+
+- name: Show MetalLB status
+  debug:
+    msg: "MetalLB installed"
+  when: inventory_hostname == groups['k8s-masters'][0]

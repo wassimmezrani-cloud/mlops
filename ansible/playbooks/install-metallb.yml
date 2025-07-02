@@ -1,0 +1,18 @@
+---
+- name: Install MetalLB Load Balancer
+  hosts: k8s-masters[0]
+  become: true
+  roles:
+    - metallb
+  
+  post_tasks:
+    - name: Verify MetalLB
+      become_user: "{{ ansible_user }}"
+      command: kubectl get pods -n metallb-system
+      register: metallb_pods
+    
+    - name: Show MetalLB pods
+      debug:
+        var: metallb_pods.stdout_lines
+      when: metallb_pods.stdout_lines is defined
+    

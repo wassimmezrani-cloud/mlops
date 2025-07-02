@@ -26,3 +26,7 @@
 - name: Install Prometheus Monitoring Stack
   import_playbook: install-prometheus.yml
   tags: prometheus
+
+- name: Install MetalLB Load Balancer
+  import_playbook: install-metallb.yml
+  tags: metallb
