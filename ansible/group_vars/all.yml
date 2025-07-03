@@ -11,6 +11,9 @@ pod_network_cidr: "10.244.0.0/16"
 service_cidr: "10.96.0.0/12"
 k8s_control_plane_endpoint: "10.110.190.21:6443"
 
+# MetalLB configuration
+metallb_ip_pool_range: "10.110.188.101-10.110.188.110"
+
 # Kubernetes configuration
 k8s_version: "1.31.4"
 k8s_api_server_port: 6443

@@ -3,29 +3,68 @@
   hosts: k8s-masters[0]
   become: true
   tasks:
+    - name: Fix kubeconfig to use HAProxy endpoint
+      become_user: "{{ ansible_user }}"
+      shell: |
+        kubectl config set-cluster kubernetes \
+          --server=https://10.110.190.21:6443 \
+          --kubeconfig=/home/{{ ansible_user }}/.kube/config
+      register: kubeconfig_fix
+    
+    - name: Test cluster connectivity
+      become_user: "{{ ansible_user }}"
+      command: kubectl get nodes
+      register: nodes_check
+    
+    - name: Show cluster nodes
+      debug:
+        var: nodes_check.stdout_lines
+    
     - name: Convert Prometheus to LoadBalancer
       become_user: "{{ ansible_user }}"
       shell: kubectl patch svc prometheus-k8s -n monitoring -p '{"spec":{"type":"LoadBalancer"}}'
+      ignore_errors: true
     
     - name: Convert Grafana to LoadBalancer
       become_user: "{{ ansible_user }}"
       shell: kubectl patch svc grafana -n monitoring -p '{"spec":{"type":"LoadBalancer"}}'
+      ignore_errors: true
     
     - name: Convert AlertManager to LoadBalancer
       become_user: "{{ ansible_user }}"
       shell: kubectl patch svc alertmanager-main -n monitoring -p '{"spec":{"type":"LoadBalancer"}}'
+      ignore_errors: true
     
     - name: Convert Ingress NGINX to LoadBalancer
       become_user: "{{ ansible_user }}"
       shell: kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer","externalTrafficPolicy":"Local"}}'
+      ignore_errors: true
+    
+    - name: Wait for LoadBalancer services
+      pause:
+        seconds: 30
     
     - name: Get LoadBalancer services
       become_user: "{{ ansible_user }}"
       shell: kubectl get svc --all-namespaces --field-selector spec.type=LoadBalancer
       register: services
-      retries: 10
-      delay: 30
     
-    - name: Show services
+    - name: Show LoadBalancer services
       debug:
         var: services.stdout_lines
+    
+    - name: Show access information
+      debug:
+        msg: |
+          ============================================
+          External Access Information
+          ============================================
+          
+          Use the EXTERNAL-IP addresses shown above to access:
+          - Grafana: http://EXTERNAL-IP:3000 (admin/admin)
+          - Prometheus: http://EXTERNAL-IP:9090
+          - AlertManager: http://EXTERNAL-IP:9093
+          - Ingress Controller: http://EXTERNAL-IP or https://EXTERNAL-IP
+          
+          MetalLB IP Pool: 10.110.188.101-10.110.188.110
+          HAProxy Endpoint: 10.110.190.21:6443

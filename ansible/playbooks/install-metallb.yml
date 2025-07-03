@@ -2,11 +2,42 @@
 - name: Install MetalLB Load Balancer
   hosts: k8s-masters[0]
   become: true
-  roles:
-    - metallb
-  
-  post_tasks:
-    - name: Verify MetalLB
+  tasks:
+    - name: Install MetalLB
+      become_user: "{{ ansible_user }}"
+      command: kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/v0.14.8/config/manifests/metallb-native.yaml
+      register: metallb_install
+    
+    - name: Wait for MetalLB controller
+      become_user: "{{ ansible_user }}"
+      command: kubectl wait --namespace metallb-system --for=condition=ready pod --selector=app=metallb --timeout=300s
+      register: metallb_wait
+    
+    - name: Create MetalLB IP pool configuration
+      become_user: "{{ ansible_user }}"
+      shell: |
+        cat <<EOF | kubectl apply -f -
+        apiVersion: metallb.io/v1beta1
+        kind: IPAddressPool
+        metadata:
+          name: default-pool
+          namespace: metallb-system
+        spec:
+          addresses:
+          - {{ metallb_ip_pool_range }}
+        ---
+        apiVersion: metallb.io/v1beta1
+        kind: L2Advertisement
+        metadata:
+          name: default-l2-adv
+          namespace: metallb-system
+        spec:
+          ipAddressPools:
+          - default-pool
+        EOF
+      when: metallb_ip_pool_range is defined
+    
+    - name: Verify MetalLB installation
       become_user: "{{ ansible_user }}"
       command: kubectl get pods -n metallb-system
       register: metallb_pods
@@ -14,5 +45,15 @@
     - name: Show MetalLB pods
       debug:
         var: metallb_pods.stdout_lines
-      when: metallb_pods.stdout_lines is defined
+    
+    - name: Show MetalLB configuration
+      become_user: "{{ ansible_user }}"
+      command: kubectl get ipaddresspool,l2advertisement -n metallb-system
+      register: metallb_config
+      ignore_errors: true
+    
+    - name: Show MetalLB config
+      debug:
+        var: metallb_config.stdout_lines
+      when: metallb_config.stdout_lines is defined
     
