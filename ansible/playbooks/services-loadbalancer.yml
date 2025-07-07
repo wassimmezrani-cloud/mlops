@@ -1,70 +1,67 @@
 ---
-- name: Convert Services to LoadBalancer
+- name: Configure External Access for Monitoring Services
   hosts: k8s-masters[0]
   become: true
   tasks:
-    - name: Fix kubeconfig to use HAProxy endpoint
+    - name: Configure kubectl to use HAProxy load balancer
       become_user: "{{ ansible_user }}"
       shell: |
         kubectl config set-cluster kubernetes \
-          --server=https://10.110.190.21:6443 \
+          --server=https://{{ k8s_control_plane_endpoint }} \
           --kubeconfig=/home/{{ ansible_user }}/.kube/config
-      register: kubeconfig_fix
+      register: kubeconfig_result
     
-    - name: Test cluster connectivity
+    - name: Verify cluster connectivity
       become_user: "{{ ansible_user }}"
       command: kubectl get nodes
-      register: nodes_check
+      register: cluster_nodes
     
-    - name: Show cluster nodes
+    - name: Display cluster status
       debug:
-        var: nodes_check.stdout_lines
+        msg: "Cluster connectivity verified"
     
-    - name: Convert Prometheus to LoadBalancer
+    - name: Enable external access for Prometheus
       become_user: "{{ ansible_user }}"
       shell: kubectl patch svc prometheus-k8s -n monitoring -p '{"spec":{"type":"LoadBalancer"}}'
-      ignore_errors: true
+      register: prometheus_patch
+      changed_when: "'patched' in prometheus_patch.stdout"
     
-    - name: Convert Grafana to LoadBalancer
+    - name: Enable external access for Grafana
       become_user: "{{ ansible_user }}"
       shell: kubectl patch svc grafana -n monitoring -p '{"spec":{"type":"LoadBalancer"}}'
-      ignore_errors: true
+      register: grafana_patch
+      changed_when: "'patched' in grafana_patch.stdout"
     
-    - name: Convert AlertManager to LoadBalancer
+    - name: Enable external access for AlertManager
       become_user: "{{ ansible_user }}"
       shell: kubectl patch svc alertmanager-main -n monitoring -p '{"spec":{"type":"LoadBalancer"}}'
-      ignore_errors: true
+      register: alertmanager_patch
+      changed_when: "'patched' in alertmanager_patch.stdout"
     
-    - name: Convert Ingress NGINX to LoadBalancer
+    - name: Enable external access for Ingress Controller
       become_user: "{{ ansible_user }}"
       shell: kubectl patch svc ingress-nginx-controller -n ingress-nginx -p '{"spec":{"type":"LoadBalancer","externalTrafficPolicy":"Local"}}'
-      ignore_errors: true
+      register: ingress_patch
+      changed_when: "'patched' in ingress_patch.stdout"
     
-    - name: Wait for LoadBalancer services
+    - name: Wait for MetalLB to assign external IPs
       pause:
         seconds: 30
     
-    - name: Get LoadBalancer services
+    - name: Get external services status
       become_user: "{{ ansible_user }}"
       shell: kubectl get svc --all-namespaces --field-selector spec.type=LoadBalancer
-      register: services
+      register: external_services
     
-    - name: Show LoadBalancer services
+    - name: Display external services
       debug:
-        var: services.stdout_lines
+        msg: "External services configured"
     
-    - name: Show access information
+    - name: Display access information
       debug:
         msg: |
-          ============================================
-          External Access Information
-          ============================================
-          
-          Use the EXTERNAL-IP addresses shown above to access:
-          - Grafana: http://EXTERNAL-IP:3000 (admin/admin)
+          Services are now accessible via external IPs:
+          - Grafana: http://EXTERNAL-IP:3000 (admin/{{ grafana_admin_password }})
           - Prometheus: http://EXTERNAL-IP:9090
           - AlertManager: http://EXTERNAL-IP:9093
-          - Ingress Controller: http://EXTERNAL-IP or https://EXTERNAL-IP
-          
-          MetalLB IP Pool: 10.110.188.101-10.110.188.110
-          HAProxy Endpoint: 10.110.190.21:6443
+          - Ingress: http://EXTERNAL-IP

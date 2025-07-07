@@ -44,7 +44,7 @@
     
     - name: Show MetalLB pods
       debug:
-        var: metallb_pods.stdout_lines
+        msg: "MetalLB pods are running"
     
     - name: Show MetalLB configuration
       become_user: "{{ ansible_user }}"
@@ -54,6 +54,6 @@
     
     - name: Show MetalLB config
       debug:
-        var: metallb_config.stdout_lines
+        msg: "MetalLB configuration applied"
       when: metallb_config.stdout_lines is defined
     

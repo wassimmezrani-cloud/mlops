@@ -129,19 +129,11 @@
     - name: Display access information
       debug:
         msg:
-          - "kube-prometheus Stack installation completed!"
-          - "Prometheus UI: http://{{ ansible_host }}:{{ prometheus_nodeport }}"
-          - "Grafana UI: http://{{ ansible_host }}:{{ grafana_nodeport }} (admin/{{ grafana_admin_password }})"
-          - "Monitoring components:"
-          - "  - Prometheus (HA with 2 replicas)"
-          - "  - AlertManager (HA with 3 replicas)" 
-          - "  - Grafana (33 pre-configured dashboards)"
-          - "  - Node Exporter (system metrics from all nodes)"
-          - "  - kube-state-metrics (Kubernetes object metrics)"
-          - "  - Blackbox Exporter (network probing)"
-          - "Current status: 100% monitoring coverage achieved"
+          - "Monitoring stack installed successfully"
+          - "Prometheus: http://{{ ansible_host }}:{{ prometheus_nodeport }}"
+          - "Grafana: http://{{ ansible_host }}:{{ grafana_nodeport }} (admin/{{ grafana_admin_password }})"
 
-    - name: Clean up temporary files
+    - name: Remove kube-prometheus repository
       file:
         path: /tmp/kube-prometheus
         state: absent

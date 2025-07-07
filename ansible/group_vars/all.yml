@@ -15,8 +15,18 @@ k8s_control_plane_endpoint: "10.110.190.21:6443"
 metallb_ip_pool_range: "10.110.188.101-10.110.188.110"
 
 # Kubernetes configuration
+k8s_cluster_name: "mlops-cluster"
 k8s_version: "1.31.4"
 k8s_api_server_port: 6443
+container_runtime: containerd
+cni_plugin: flannel
+ingress_controller: nginx
+
+# Kubernetes packages
+k8s_packages:
+  - kubelet=1.31.4-1.1
+  - kubeadm=1.31.4-1.1
+  - kubectl=1.31.4-1.1
 
 # Monitoring configuration
 monitoring_namespace: "monitoring"
