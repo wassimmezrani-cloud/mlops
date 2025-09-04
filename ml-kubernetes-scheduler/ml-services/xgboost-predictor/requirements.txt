@@ -1,0 +1,66 @@
+# XGBoost Predictor Service Requirements
+# ML-Scheduler HYDATIS - Service de prédiction de charge
+
+# FastAPI et serveur
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
+# Machine Learning
+xgboost==2.0.2
+scikit-learn==1.3.2
+pandas==2.1.4
+numpy==1.24.4
+joblib==1.3.2
+
+# Cache et Storage
+redis==5.0.1
+aioredis==2.0.1
+
+# Monitoring et Métriques
+prometheus-client==0.19.0
+
+# Logging et Configuration
+loguru==0.7.2
+python-dotenv==1.0.0
+pyyaml==6.0.1
+
+# HTTP et Networking
+httpx==0.25.2
+aiohttp==3.9.1
+
+# Data Processing et Analytics
+scipy==1.11.4
+statsmodels==0.14.0
+
+# Kubeflow et MLOps
+mlflow==2.8.1
+feast==0.35.0
+
+# Longhorn Storage Integration
+kubernetes==28.1.0
+longhorn-client==1.5.1
+
+# Date et Time
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Development et Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+black==23.11.0
+flake8==6.1.0
+mypy==1.7.1
+
+# Performance
+orjson==3.9.10
+python-multipart==0.0.6
+
+# Security
+cryptography==41.0.8
+python-jose[cryptography]==3.3.0
+
+# Utilities
+tqdm==4.66.1
+click==8.1.7

@@ -1,0 +1,274 @@
+# Configuration ML-Scheduler HYDATIS
+# Environment: Development
+
+# Core Scheduler Configuration
+scheduler:
+  name: "MLScheduler"
+  version: "v1.0.0"
+  namespace: "ml-scheduler"
+  
+  # Scoring Configuration
+  scoring:
+    weights:
+      xgboost: 0.4      # 40% - Prédiction charge future
+      qlearning: 0.35   # 35% - Optimisation placement
+      isolation: 0.25   # 25% - Détection anomalies
+    
+    # Fallback configuration si ML services indisponibles
+    fallback:
+      enabled: true
+      default_weight: 0.33  # Poids égal si ML indisponible
+      
+  # Décision thresholds
+  thresholds:
+    min_score: 0.1        # Score minimum pour placement
+    max_latency_ms: 100   # Latence max décision (ms)
+    confidence_min: 0.7   # Confiance minimum ML
+
+# Redis Cache Configuration
+redis:
+  host: "redis-cache-service.ml-scheduler.svc.cluster.local"
+  port: 6379
+  password: ""
+  db: 0
+  
+  # Cache TTL settings
+  ttl:
+    node_metrics: 60      # 1 minute
+    predictions: 300      # 5 minutes
+    placement_history: 3600  # 1 heure
+    
+  # Connection settings
+  connection:
+    pool_size: 10
+    timeout_seconds: 5
+    retry_attempts: 3
+
+# ML Services Configuration
+ml_services:
+  enabled: true
+  timeout_seconds: 2    # Timeout rapide pour décisions
+  retry_attempts: 2
+  
+  # XGBoost Predictor Service
+  xgboost:
+    url: "http://xgboost-predictor-service.ml-scheduler.svc.cluster.local:8080"
+    endpoints:
+      predict: "/predict"
+      health: "/health"
+      metrics: "/metrics"
+    
+    # Modèle configuration
+    model:
+      version: "v1.0.0"
+      accuracy_target: 0.89  # 89% accuracy CPU
+      memory_accuracy: 0.86  # 86% accuracy Memory
+      
+  # Q-Learning Optimizer Service  
+  qlearning:
+    url: "http://qlearning-optimizer-service.ml-scheduler.svc.cluster.local:8080"
+    endpoints:
+      optimize: "/optimize"
+      health: "/health" 
+      metrics: "/metrics"
+      
+    # Agent configuration
+    agent:
+      version: "v1.0.0"
+      performance_target: 1.34  # +34% vs random
+      learning_rate: 0.01
+      
+  # Isolation Forest Detector Service
+  isolation_forest:
+    url: "http://isolation-detector-service.ml-scheduler.svc.cluster.local:8080"
+    endpoints:
+      detect: "/detect"
+      health: "/health"
+      metrics: "/metrics"
+      
+    # Detector configuration  
+    detector:
+      version: "v1.0.0"
+      precision_target: 0.94    # 94% precision
+      false_positive_max: 0.08  # <8% false positives
+
+# Historical Data Configuration
+historical_data:
+  # Longhorn Storage paths
+  storage:
+    base_path: "/data/historical"
+    cluster_metrics: "/data/historical/cluster-metrics"
+    node_metrics: "/data/historical/node-metrics" 
+    pod_metrics: "/data/historical/pod-metrics"
+    events: "/data/historical/events"
+    
+  # Data retention
+  retention:
+    metrics: "30d"        # 30 jours métriques
+    events: "7d"          # 7 jours événements
+    predictions: "24h"    # 24h prédictions
+    
+  # Collection intervals
+  collection:
+    metrics_interval: "30s"
+    events_interval: "60s"
+    aggregation_interval: "5m"
+
+# Monitoring Configuration
+monitoring:
+  prometheus_url: "http://prometheus-k8s.monitoring.svc.cluster.local:9090"
+  
+  # Métriques custom ML-Scheduler
+  metrics:
+    enabled: true
+    port: 8080
+    path: "/metrics"
+    
+    # Business metrics
+    business:
+      - placement_accuracy
+      - resource_utilization
+      - availability_impact
+      - performance_gain
+      
+    # ML metrics
+    ml:
+      - xgboost_accuracy
+      - qlearning_reward
+      - isolation_precision
+      - model_drift
+      
+    # Operational metrics
+    operational:
+      - scheduling_latency
+      - cache_hit_rate
+      - api_response_time
+      - error_rates
+
+# Kubeflow Integration
+kubeflow:
+  namespace: "kubeflow"
+  
+  # MLflow Integration
+  mlflow:
+    tracking_uri: "http://mlflow-server.kubeflow.svc.cluster.local:5000"
+    experiment_name: "ml-scheduler-hydatis"
+    
+  # KServe Integration
+  kserve:
+    namespace: "ml-scheduler"
+    model_serving:
+      timeout: 50         # <50ms serving target
+      replicas:
+        min: 1
+        max: 5
+        
+  # Feast Feature Store
+  feast:
+    registry_path: "/data/feast/registry"
+    online_store: "redis://redis-cache-service.ml-scheduler.svc.cluster.local:6379/1"
+
+# Longhorn Storage Configuration  
+longhorn:
+  namespace: "longhorn-system"
+  
+  # Volumes configuration
+  volumes:
+    historical_data:
+      size: "100Gi"
+      replicas: 3
+      storage_class: "longhorn-historical"
+      
+    ml_models:
+      size: "50Gi" 
+      replicas: 3
+      storage_class: "longhorn-models"
+      
+    cache_data:
+      size: "20Gi"
+      replicas: 2
+      storage_class: "longhorn-cache"
+      
+  # Backup configuration
+  backup:
+    enabled: true
+    schedule: "0 2 * * *"  # Daily 2AM
+    retention: "7d"
+
+# Security Configuration
+security:
+  # RBAC
+  rbac:
+    enabled: true
+    service_account: "ml-scheduler"
+    
+  # Network Policies
+  network_policies:
+    enabled: true
+    ingress:
+      - from: "monitoring"
+      - from: "kubeflow" 
+    egress:
+      - to: "ml-services"
+      - to: "redis"
+      - to: "longhorn-system"
+      
+  # Pod Security
+  pod_security:
+    run_as_non_root: true
+    read_only_root_fs: true
+    drop_capabilities: ["ALL"]
+
+# Performance Configuration
+performance:
+  # Scheduling performance
+  scheduling:
+    max_concurrent_decisions: 100
+    decision_timeout_ms: 100
+    batch_size: 10
+    
+  # Cache performance
+  cache:
+    preload_enabled: true
+    preload_interval: "5m"
+    compression_enabled: true
+    
+  # ML inference performance
+  ml_inference:
+    batch_predictions: true
+    batch_size: 20
+    async_processing: true
+
+# Development & Debugging
+development:
+  debug:
+    enabled: true
+    log_level: "info"     # debug, info, warn, error
+    detailed_metrics: true
+    
+  # Testing
+  testing:
+    mock_ml_services: false
+    simulation_mode: false
+    load_test_enabled: false
+
+# Business Impact Tracking
+business_impact:
+  # HYDATIS KPIs
+  kpis:
+    availability_target: 0.997      # 99.7%
+    cpu_utilization_target: 0.65    # 65%
+    memory_utilization_target: 0.70 # 70%
+    simultaneous_projects: 15       # 15x capacity
+    
+  # ROI Calculation
+  roi:
+    target_percentage: 14.28        # 1,428%
+    target_months: 12               # 12 mois
+    baseline_costs: 100000          # €100K baseline
+    
+  # Reporting
+  reporting:
+    enabled: true
+    interval: "1h"
+    dashboard_url: "http://grafana.monitoring.svc.cluster.local:3000"
