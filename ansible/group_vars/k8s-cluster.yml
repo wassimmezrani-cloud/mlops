@@ -1,3 +1,0 @@
----
-# This file is kept for cluster-specific overrides if needed
-# Main configuration is in group_vars/all.yml

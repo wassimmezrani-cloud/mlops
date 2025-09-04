@@ -1,7 +1,0 @@
----
-# Handlers for metallb role
-
-- name: verify metallb pods
-  command: kubectl get pods -n metallb-system
-  become_user: "{{ ansible_user }}"
-  register: metallb_pod_status
