@@ -1,0 +1,96 @@
+# ML-Scheduler Storage Volumes for Kubeflow Jupyter Notebook
+
+---
+# 1. Historical Data Storage (Prometheus metrics, K8s events)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-historical-data
+  namespace: wassimmezrani
+  labels:
+    app: ml-scheduler
+    component: data-storage
+    data-type: historical
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: longhorn
+
+---
+# 2. ML Models Storage (XGBoost, Q-Learning, Isolation Forest)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-models-storage
+  namespace: wassimmezrani
+  labels:
+    app: ml-scheduler
+    component: model-storage
+    data-type: models
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 30Gi
+  storageClassName: longhorn
+
+---
+# 3. Experiments & Artifacts (MLflow, Katib, results)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-experiments
+  namespace: wassimmezrani
+  labels:
+    app: ml-scheduler
+    component: experiments
+    data-type: artifacts
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: longhorn
+
+---
+# 4. Workspace & Notebooks (Jupyter notebooks, code, configs)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-scheduler-workspace
+  namespace: wassimmezrani
+  labels:
+    app: ml-scheduler
+    component: workspace
+    data-type: development
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: longhorn
+
+---
+# 5. Feature Store Data (Feast features, processed data)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-feature-store
+  namespace: wassimmezrani
+  labels:
+    app: ml-scheduler
+    component: feature-store
+    data-type: features
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 25Gi
+  storageClassName: longhorn
