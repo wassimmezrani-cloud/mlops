@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-historical-data
+  namespace: wassimmezrani
+  labels:
+    app: ml-scheduler
+    component: historical-data
+spec:
+  storageClassName: longhorn
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi

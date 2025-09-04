@@ -1,0 +1,41 @@
+ml_scheduler:
+  data_collection:
+    retention_days: 15
+    resolution_hours: 1
+    batch_size: 1000
+    
+  algorithms:
+    xgboost:
+      name: "XGBoost Predictor"
+      purpose: "Prédiction charge temporelle nodes"
+      features: 8
+      target: "node_load_prediction"
+      
+    qlearning:
+      name: "Q-Learning Optimizer" 
+      purpose: "Optimisation scheduling pods"
+      features: 6
+      target: "scheduling_decision"
+      
+    isolation_forest:
+      name: "Isolation Forest Detector"
+      purpose: "Détection anomalies comportement"
+      features: 7
+      target: "anomaly_score"
+      
+  storage:
+    data_volume: "/data"
+    models_volume: "/models"
+    experiments_volume: "/experiments"
+    workspace_volume: "/home/jovyan"
+    
+  training:
+    test_size: 0.2
+    validation_size: 0.1
+    random_state: 42
+    
+  quality_thresholds:
+    min_score: 50
+    excellent_score: 85
+    min_completeness: 90
+    min_historical_days: 7

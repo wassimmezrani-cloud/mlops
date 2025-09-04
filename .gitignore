@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.env
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# ML Models & Data
+models/*.pkl
+models/*.joblib
+data/*.csv
+data/*.parquet
+experiments/*/
+
+# Logs
+logs/*.log
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MLOps
+mlruns/
+artifacts/
+
+# Kubernetes
+*.kubeconfig
+CLAUDE.md
+requirements.txt
+docs/infrastructure-audit-report.md
