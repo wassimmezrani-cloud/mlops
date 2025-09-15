@@ -1,0 +1,242 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-scheduler-alertmanager-config
+  namespace: monitoring
+  labels:
+    app: ml-scheduler
+    component: alerting
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'smtp.hydatis.local:587'
+      smtp_from: 'ml-scheduler-alerts@hydatis.local'
+      smtp_auth_username: 'ml-scheduler-alerts@hydatis.local'
+      smtp_auth_password: 'alerting-password'
+      slack_api_url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
+      
+    templates:
+    - '/etc/alertmanager/templates/*.tmpl'
+    
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 1h
+      receiver: 'ml-team-default'
+      routes:
+      
+      # Critical alerts - immediate escalation
+      - match:
+          severity: critical
+        receiver: 'ml-team-critical'
+        group_wait: 10s
+        group_interval: 2m
+        repeat_interval: 15m
+        routes:
+        - match:
+            alertname: MLSchedulerServiceDown
+          receiver: 'ml-team-pager'
+          group_wait: 0s
+          repeat_interval: 5m
+          
+      # Performance alerts - ML team focus
+      - match_re:
+          alertname: '.*HighLatency|.*LowThroughput|.*HighErrorRate'
+        receiver: 'ml-team-performance'
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 30m
+        
+      # Business impact alerts - executive notification  
+      - match_re:
+          alertname: '.*PredictionAccuracy.*|.*ResourceOptimization.*|.*DecisionLatency.*'
+        receiver: 'ml-team-business'
+        group_wait: 2m
+        group_interval: 10m
+        repeat_interval: 2h
+        
+      # Resource alerts - platform team
+      - match_re:
+          alertname: '.*HighCPU.*|.*HighMemory.*|.*OOMKill.*'
+        receiver: 'platform-team'
+        group_wait: 1m
+        group_interval: 5m
+        repeat_interval: 1h
+    
+    receivers:
+    
+    # Default ML Team Notifications
+    - name: 'ml-team-default'
+      slack_configs:
+      - channel: '#ml-scheduler-alerts'
+        title: 'ML-Scheduler Alert - {{ .Status | toUpper }}'
+        text: |
+          {{ range .Alerts }}
+          *Alert:* {{ .Annotations.summary }}
+          *Service:* {{ .Labels.service | default "unknown" }}
+          *Expert:* {{ .Labels.expert | default "N/A" }}
+          *Severity:* {{ .Labels.severity }}
+          *Description:* {{ .Annotations.description }}
+          {{ if .GeneratorURL }}*Graph:* <{{ .GeneratorURL }}|View in Prometheus>{{ end }}
+          {{ end }}
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+        
+      email_configs:
+      - to: 'ml-team@hydatis.local'
+        subject: 'ML-Scheduler Alert: {{ .GroupLabels.alertname }}'
+        body: |
+          Alert Details:
+          {{ range .Alerts }}
+          - {{ .Annotations.summary }}
+            Service: {{ .Labels.service | default "unknown" }}
+            Expert: {{ .Labels.expert | default "N/A" }}
+            Severity: {{ .Labels.severity }}
+            Description: {{ .Annotations.description }}
+          {{ end }}
+    
+    # Critical Alerts - High Priority
+    - name: 'ml-team-critical'
+      slack_configs:
+      - channel: '#ml-scheduler-critical'
+        title: '🚨 CRITICAL: ML-Scheduler Alert'
+        text: |
+          {{ range .Alerts }}
+          🚨 *CRITICAL ALERT*
+          *Service:* {{ .Labels.service | default "unknown" }}
+          *Expert:* {{ .Labels.expert | default "N/A" }}
+          *Issue:* {{ .Annotations.summary }}
+          *Impact:* {{ .Annotations.description }}
+          *Action Required:* Immediate investigation
+          {{ if .GeneratorURL }}*Metrics:* <{{ .GeneratorURL }}|View Dashboard>{{ end }}
+          {{ end }}
+        color: 'danger'
+        
+      email_configs:
+      - to: 'ml-team@hydatis.local,platform-team@hydatis.local'
+        subject: '🚨 CRITICAL: ML-Scheduler - {{ .GroupLabels.alertname }}'
+        body: |
+          CRITICAL ALERT TRIGGERED
+          
+          Service Impact: HIGH
+          
+          Alert Details:
+          {{ range .Alerts }}
+          - Service: {{ .Labels.service | default "unknown" }}
+          - Expert: {{ .Labels.expert | default "N/A" }}  
+          - Issue: {{ .Annotations.summary }}
+          - Description: {{ .Annotations.description }}
+          - Started: {{ .StartsAt }}
+          {{ end }}
+          
+          IMMEDIATE ACTION REQUIRED
+    
+    # PagerDuty Integration for Service Down
+    - name: 'ml-team-pager'
+      pagerduty_configs:
+      - routing_key: 'ml-scheduler-integration-key'
+        description: 'ML-Scheduler Service Down: {{ .GroupLabels.alertname }}'
+        severity: 'critical'
+        details:
+          service: '{{ .CommonLabels.service }}'
+          expert: '{{ .CommonLabels.expert }}'
+          summary: '{{ .CommonAnnotations.summary }}'
+          description: '{{ .CommonAnnotations.description }}'
+          
+    # Performance Focused Notifications
+    - name: 'ml-team-performance'
+      slack_configs:
+      - channel: '#ml-scheduler-performance'
+        title: '⚠️ Performance Alert: ML-Scheduler'
+        text: |
+          {{ range .Alerts }}
+          ⚠️ *Performance Issue Detected*
+          *Service:* {{ .Labels.service | default "unknown" }}
+          *Expert:* {{ .Labels.expert | default "N/A" }}
+          *Metric:* {{ .Annotations.summary }}
+          *Current Value:* {{ .Annotations.description }}
+          *Action:* Review performance metrics and consider scaling
+          {{ end }}
+        color: 'warning'
+        
+    # Business Impact Notifications
+    - name: 'ml-team-business'
+      slack_configs:
+      - channel: '#ml-scheduler-business'
+        title: '📊 Business Impact Alert'
+        text: |
+          {{ range .Alerts }}
+          📊 *Business Metric Alert*
+          *Metric:* {{ .Annotations.summary }}
+          *Impact:* {{ .Annotations.description }}
+          *Service:* {{ .Labels.service | default "ml-scheduler" }}
+          *Recommendation:* Review ML model performance and business KPIs
+          {{ end }}
+        color: 'warning'
+        
+      email_configs:
+      - to: 'ml-team@hydatis.local,product-team@hydatis.local'
+        subject: 'Business Impact Alert: ML-Scheduler {{ .GroupLabels.alertname }}'
+        body: |
+          Business Impact Alert
+          
+          This alert indicates potential impact on business metrics.
+          
+          Details:
+          {{ range .Alerts }}
+          - Metric: {{ .Annotations.summary }}
+          - Current Impact: {{ .Annotations.description }}
+          - Service: {{ .Labels.service | default "ml-scheduler" }}
+          {{ end }}
+          
+          Please review ML-Scheduler performance and business KPIs.
+    
+    # Platform Team - Resource Issues
+    - name: 'platform-team'
+      slack_configs:
+      - channel: '#platform-alerts'
+        title: '🔧 Resource Alert: ML-Scheduler'
+        text: |
+          {{ range .Alerts }}
+          🔧 *Resource Issue*
+          *Component:* {{ .Labels.component | default "unknown" }}
+          *Issue:* {{ .Annotations.summary }}
+          *Details:* {{ .Annotations.description }}
+          *Service:* {{ .Labels.service | default "ml-scheduler" }}
+          {{ end }}
+        color: 'warning'
+        
+      email_configs:
+      - to: 'platform-team@hydatis.local'
+        subject: 'Resource Alert: ML-Scheduler {{ .GroupLabels.alertname }}'
+        body: |
+          Resource Alert - Platform Team Action Required
+          
+          {{ range .Alerts }}
+          - Component: {{ .Labels.component | default "unknown" }}
+          - Issue: {{ .Annotations.summary }}
+          - Details: {{ .Annotations.description }}
+          - Service: {{ .Labels.service | default "ml-scheduler" }}
+          {{ end }}
+    
+    inhibit_rules:
+    # Inhibit lower severity alerts when higher severity is active
+    - source_match:
+        severity: 'critical'
+      target_match:
+        severity: 'warning'
+      equal: ['alertname', 'service', 'expert']
+      
+    # Inhibit individual service alerts when service is completely down
+    - source_match:
+        alertname: 'MLSchedulerServiceDown'
+      target_match_re:
+        alertname: '.*HighLatency|.*LowThroughput|.*HighErrorRate'
+      equal: ['service']
+      
+    # Inhibit resource alerts when pod is restarting
+    - source_match:
+        alertname: 'MLSchedulerPodCrashLooping'
+      target_match_re:
+        alertname: '.*HighCPU.*|.*HighMemory.*'
+      equal: ['pod']

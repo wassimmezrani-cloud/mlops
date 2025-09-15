@@ -1,0 +1,40 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    app: ml-scheduler
+    component: alerting
+  name: ml-scheduler-pipeline-alerts
+  namespace: ml-scheduler-monitoring
+spec:
+  groups:
+  - name: ml-scheduler.pipeline
+    rules:
+    - alert: MLSchedulerPipelineFailed
+      annotations:
+        description: Pipeline success rate has been below 80% for more than 5 minutes
+        runbook_url: https://wiki.company.com/ml-scheduler-troubleshooting
+        summary: ML-Scheduler pipeline success rate is below 80%
+      expr: ml_scheduler_pipeline_success_rate < 0.8
+      for: 5m
+      labels:
+        component: ml-scheduler-pipeline
+        severity: high
+    - alert: MLSchedulerPipelineDurationHigh
+      annotations:
+        description: Pipeline execution is taking longer than 2 hours
+        summary: ML-Scheduler pipeline execution time is too high
+      expr: ml_scheduler_pipeline_duration_seconds > 7200
+      for: 1m
+      labels:
+        component: ml-scheduler-pipeline
+        severity: medium
+    - alert: MLSchedulerModelPerformanceLow
+      annotations:
+        description: Model business score is below 75 points
+        summary: ML-Scheduler model performance is below threshold
+      expr: ml_scheduler_model_performance{metric_type="business_score"} < 75
+      for: 1m
+      labels:
+        component: ml-scheduler-models
+        severity: high

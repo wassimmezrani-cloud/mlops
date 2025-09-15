@@ -1,0 +1,42 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  labels:
+    app: ml-scheduler
+    component: automation
+    schedule-type: weekly
+  name: ml-scheduler-weekly-training
+  namespace: kubeflow
+spec:
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - args:
+            - --pipeline-name
+            - ml-scheduler-training-pipeline
+            command:
+            - python
+            - /app/trigger_pipeline.py
+            env:
+            - name: KUBEFLOW_ENDPOINT
+              value: http://ml-pipeline.kubeflow.svc.cluster.local:8888
+            - name: PIPELINE_VERSION
+              value: 1.0.0
+            image: ml-scheduler/pipeline-trigger:v1.0.0
+            name: pipeline-trigger
+            resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 100m
+                memory: 128Mi
+          restartPolicy: OnFailure
+          serviceAccountName: ml-scheduler-pipeline-runner
+  schedule: 0 2 * * 0
+  successfulJobsHistoryLimit: 3
+  timeZone: UTC

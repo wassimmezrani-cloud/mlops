@@ -1,0 +1,75 @@
+apiVersion: v1
+data:
+  alerting_config.yaml: "alert_channels:\n  email:\n    enabled: true\n    recipients:\n\
+    \    - ml-team@company.com\n    - platform-team@company.com\n    severity_levels:\n\
+    \    - medium\n    - high\n    - critical\n    smtp_server: smtp.company.com\n\
+    \  pagerduty:\n    enabled: true\n    integration_key: your-pagerduty-integration-key\n\
+    \    severity_levels:\n    - critical\n  slack:\n    channel: '#ml-scheduler-alerts'\n\
+    \    enabled: true\n    severity_levels:\n    - high\n    - critical\n    webhook_url:\
+    \ https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX\n\
+    alert_rules:\n- channels:\n  - slack\n  - email\n  condition: ml_scheduler_pipeline_success_rate\
+    \ < 0.8\n  description: ML-Scheduler pipeline success rate below 80%\n  duration:\
+    \ 5m\n  name: ML-Scheduler Pipeline Failed\n  runbook_url: https://wiki.company.com/ml-scheduler-troubleshooting\n\
+    \  severity: high\n- channels:\n  - slack\n  condition: ml_scheduler_pipeline_duration_seconds\
+    \ > 7200\n  description: Pipeline execution taking longer than 2 hours\n  duration:\
+    \ 1m\n  name: Pipeline Execution Too Long\n  severity: medium\n- channels:\n \
+    \ - slack\n  - email\n  condition: ml_scheduler_model_performance{metric_type=\"\
+    business_score\"} < 75\n  description: Model performance below business threshold\n\
+    \  duration: 1m\n  name: Model Performance Degradation\n  severity: high\n- channels:\n\
+    \  - slack\n  condition: ml_scheduler_data_completeness < 0.95\n  description:\
+    \ Data quality issues detected\n  duration: 10m\n  name: Data Quality Issues\n\
+    \  severity: medium\n- channels:\n  - slack\n  - email\n  - pagerduty\n  condition:\
+    \ ml_scheduler_pipeline_memory_usage > 0.95\n  description: Pipeline consuming\
+    \ too much memory\n  duration: 2m\n  name: Pipeline Resource Exhaustion\n  severity:\
+    \ critical\nescalation_policies:\n  critical_escalation:\n    levels:\n    - contacts:\n\
+    \      - oncall-sre@company.com\n      duration: 2m\n    - contacts:\n      -\
+    \ platform-lead@company.com\n      duration: 10m\n    - contacts:\n      - cto@company.com\n\
+    \      duration: 20m\n  ml_team_escalation:\n    levels:\n    - contacts:\n  \
+    \    - ml-team@company.com\n      duration: 5m\n    - contacts:\n      - ml-lead@company.com\n\
+    \      duration: 15m\n    - contacts:\n      - platform-team@company.com\n   \
+    \   duration: 30m\n"
+  monitoring_config.yaml: "data_quality_metrics:\n  data_completeness:\n    alert_threshold:\
+    \ 0.95\n    description: Data completeness percentage\n    metric_name: ml_scheduler_data_completeness\n\
+    \  data_freshness:\n    alert_threshold: 25\n    description: Data freshness in\
+    \ hours\n    metric_name: ml_scheduler_data_freshness_hours\n  feature_drift:\n\
+    \    alert_threshold: 0.7\n    description: Feature drift detection score\n  \
+    \  metric_name: ml_scheduler_feature_drift_score\npipeline_metrics:\n  component_duration:\n\
+    \    alert_thresholds:\n      data_collection: 1800\n      deployment: 600\n \
+    \     preprocessing: 1200\n      trio_training: 2700\n      validation: 900\n\
+    \    description: Individual component duration\n    labels:\n    - component_name\n\
+    \    - status\n    metric_name: ml_scheduler_component_duration_seconds\n  execution_duration:\n\
+    \    alert_threshold: 7200\n    description: Pipeline execution duration\n   \
+    \ labels:\n    - pipeline_name\n    - status\n    metric_name: ml_scheduler_pipeline_duration_seconds\n\
+    \  model_performance:\n    alert_thresholds:\n      isolation_f1: 0.85\n     \
+    \ qlearning_improvement: 0.15\n      trio_integration_score: 75.0\n      xgboost_r2:\
+    \ 0.85\n    description: Model performance scores\n    labels:\n    - algorithm\n\
+    \    - metric_type\n    metric_name: ml_scheduler_model_performance\n  pipeline_success_rate:\n\
+    \    alert_threshold: 0.8\n    description: Pipeline success rate percentage\n\
+    \    metric_name: ml_scheduler_pipeline_success_rate\nresource_metrics:\n  cpu_utilization:\n\
+    \    alert_threshold: 0.9\n    description: Pipeline CPU utilization\n    metric_name:\
+    \ ml_scheduler_pipeline_cpu_usage\n  memory_utilization:\n    alert_threshold:\
+    \ 0.85\n    description: Pipeline memory utilization\n    metric_name: ml_scheduler_pipeline_memory_usage\n\
+    \  storage_usage:\n    alert_threshold: 0.8\n    description: Pipeline storage\
+    \ usage\n    metric_name: ml_scheduler_pipeline_storage_usage\n"
+  scheduling_config.yaml: "event_triggers:\n  data_threshold_trigger:\n    condition:\
+    \ new_data_samples > 10000\n    cooldown_hours: 24\n    description: Trigger when\
+    \ significant new data available\n    enabled: true\n  incident_trigger:\n   \
+    \ condition: cluster_incidents > 5\n    cooldown_hours: 12\n    description: Trigger\
+    \ after cluster incidents spike\n    enabled: true\n  performance_degradation_trigger:\n\
+    \    condition: model_accuracy < 0.8\n    cooldown_hours: 6\n    description:\
+    \ Trigger on model performance degradation\n    enabled: true\nmanual_triggers:\n\
+    \  admin_trigger:\n    approval_required: true\n    description: Manual admin-triggered\
+    \ training\n    enabled: true\n    roles:\n    - ml-engineer\n    - platform-admin\n\
+    \  emergency_retrain:\n    approval_required: false\n    description: Emergency\
+    \ retraining for incidents\n    enabled: true\n    roles:\n    - platform-admin\n\
+    \    - sre-oncall\nresource_scheduling:\n  preemption_policy: PreemptLowerPriority\n\
+    \  preferred_node_selector:\n    instance-type: compute-optimized\n    workload-type:\
+    \ ml-training\n  priority_class: ml-scheduler-training\n  resource_limits:\n \
+    \   max_cpu_cores: 32\n    max_memory_gb: 128\n    max_parallel_pipelines: 2\n\
+    weekly_retraining:\n  description: Weekly complete trio re-training\n  enabled:\
+    \ true\n  max_duration_hours: 4\n  retry_policy:\n    max_retries: 2\n    retry_delay_minutes:\
+    \ 30\n  schedule: 0 2 * * 0\n  timezone: UTC\n"
+kind: ConfigMap
+metadata:
+  name: ml-scheduler-automation-config
+  namespace: kubeflow

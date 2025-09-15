@@ -1,0 +1,86 @@
+# Ignorer tous les fichiers Markdown de documentation
+*.md
+
+# Environnements Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Environnements virtuels
+mlops_env/
+venv/
+ENV/
+env/
+.venv/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# PyCharm
+.idea/
+
+# VSCode
+.vscode/
+
+# MLflow
+mlruns/
+
+# Modèles et données
+models/*/
+data/*/
+*.pkl
+*.joblib
+*.h5
+*.onnx
+
+# Logs
+*.log
+logs/
+
+# Fichiers temporaires
+.tmp/
+temp/
+*.tmp
+
+# Certificats et secrets
+*.pem
+*.key
+*.crt
+secrets/
+
+# Docker
+.dockerignore
+
+# Kubernetes
+*.kubeconfig
+
+# Cache
+.cache/
+.pytest_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*~

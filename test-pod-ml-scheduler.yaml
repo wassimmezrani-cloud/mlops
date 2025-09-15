@@ -1,0 +1,99 @@
+# Test Pod for ML-Scheduler Integration
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ml-scheduler-test-pod
+  namespace: default
+  annotations:
+    scheduler.alpha.kubernetes.io/preferred-node: ""
+    ml-scheduler.hydatis.com/enable-ml-scheduling: "true"
+  labels:
+    app: ml-scheduler-test
+    workload-type: cpu-intensive
+spec:
+  schedulerName: ml-scheduler  # Use our custom scheduler
+  restartPolicy: Never
+  containers:
+  - name: test-container
+    image: busybox:1.35
+    command:
+    - sleep
+    - "300"
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+        ephemeral-storage: 1Gi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+        ephemeral-storage: 2Gi
+  # Node selection preferences for ML scheduler
+  nodeSelector:
+    kubernetes.io/arch: amd64
+  tolerations:
+  - key: "ml-scheduler.hydatis.com/test"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"
+
+---
+# Test Pod with high resource requirements
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ml-scheduler-heavy-test-pod
+  namespace: default
+  annotations:
+    ml-scheduler.hydatis.com/enable-ml-scheduling: "true"
+    ml-scheduler.hydatis.com/workload-priority: "high"
+  labels:
+    app: ml-scheduler-test
+    workload-type: memory-intensive
+spec:
+  schedulerName: ml-scheduler
+  restartPolicy: Never
+  containers:
+  - name: heavy-container
+    image: nginx:alpine
+    resources:
+      requests:
+        cpu: 1
+        memory: 2Gi
+      limits:
+        cpu: 2
+        memory: 4Gi
+  nodeSelector:
+    kubernetes.io/arch: amd64
+
+---
+# Test Pod with anomaly simulation
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ml-scheduler-anomaly-test-pod
+  namespace: default
+  annotations:
+    ml-scheduler.hydatis.com/enable-ml-scheduling: "true"
+    ml-scheduler.hydatis.com/anomaly-detection: "enabled"
+  labels:
+    app: ml-scheduler-test
+    workload-type: io-intensive
+spec:
+  schedulerName: ml-scheduler
+  restartPolicy: Never
+  containers:
+  - name: io-container
+    image: busybox:1.35
+    command:
+    - sh
+    - -c
+    - "while true; do dd if=/dev/zero of=/tmp/testfile bs=1M count=100; rm /tmp/testfile; sleep 5; done"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi

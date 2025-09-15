@@ -1,0 +1,258 @@
+# Katib Configuration for ML-Scheduler Hyperparameter Optimization
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: katib-system
+  labels:
+    app: katib
+    project: ml-scheduler-hydatis
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: katib-config
+  namespace: katib-system
+data:
+  katib-config.yaml: |
+    runtime:
+      metricsCollectors:
+      - kind: StdOut
+        image: docker.io/kubeflowkatib/file-metrics-collector:v0.16.0
+      - kind: File
+        image: docker.io/kubeflowkatib/file-metrics-collector:v0.16.0  
+      - kind: TensorFlowEvent
+        image: docker.io/kubeflowkatib/tfevent-metrics-collector:v0.16.0
+    suggestion:
+      - algorithmName: random
+        image: docker.io/kubeflowkatib/suggestion-hyperopt:v0.16.0
+      - algorithmName: tpe
+        image: docker.io/kubeflowkatib/suggestion-hyperopt:v0.16.0
+      - algorithmName: grid
+        image: docker.io/kubeflowkatib/suggestion-chocolate:v0.16.0  
+      - algorithmName: hyperband
+        image: docker.io/kubeflowkatib/suggestion-hyperband:v0.16.0
+      - algorithmName: bayesianoptimization
+        image: docker.io/kubeflowkatib/suggestion-skopt:v0.16.0
+      - algorithmName: cmaes
+        image: docker.io/kubeflowkatib/suggestion-goptuna:v0.16.0
+      - algorithmName: sobol
+        image: docker.io/kubeflowkatib/suggestion-goptuna:v0.16.0
+      - algorithmName: multivariate-tpe
+        image: docker.io/kubeflowkatib/suggestion-optuna:v0.16.0
+    early_stopping:
+      - algorithmName: medianstop
+        image: docker.io/kubeflowkatib/earlystopping-medianstop:v0.16.0
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: katib-controller
+  namespace: katib-system
+
+---
+apiVersion: v1
+kind: ServiceAccount  
+metadata:
+  name: katib-ui
+  namespace: katib-system
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: katib-controller
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - serviceaccounts
+  - services
+  - secrets
+  - events
+  - namespaces
+  verbs:
+  - "*"
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - replicasets
+  verbs:
+  - "*"
+- apiGroups:
+  - batch
+  resources:
+  - jobs
+  - cronjobs
+  verbs:
+  - "*"
+- apiGroups:
+  - kubeflow.org
+  resources:
+  - experiments
+  - trials
+  - suggestions
+  verbs:
+  - "*"
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: katib-controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: katib-controller
+subjects:
+- kind: ServiceAccount
+  name: katib-controller
+  namespace: katib-system
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: katib-controller
+  namespace: katib-system
+  labels:
+    app: katib-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: katib-controller
+  template:
+    metadata:
+      labels:
+        app: katib-controller
+    spec:
+      serviceAccountName: katib-controller
+      containers:
+      - name: katib-controller
+        image: docker.io/kubeflowkatib/katib-controller:v0.16.0
+        command:
+          - "/manager"
+        args:
+          - "--config=katib-config"
+          - "--trial-resources=Job.v1.batch"
+          - "--metrics-addr=0.0.0.0:8443"
+          - "--webhook-port=8443"
+        ports:
+        - containerPort: 8443
+          name: webhook
+          protocol: TCP
+        - containerPort: 18080
+          name: metrics
+          protocol: TCP
+        env:
+        - name: KATIB_CORE_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - mountPath: /opt/katib/conf
+          name: katib-config
+        resources:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+      volumes:
+      - name: katib-config
+        configMap:
+          name: katib-config
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: katib-controller
+  namespace: katib-system
+spec:
+  selector:
+    app: katib-controller
+  ports:
+  - name: webhook
+    port: 443
+    protocol: TCP
+    targetPort: webhook
+  - name: metrics
+    port: 8080
+    protocol: TCP
+    targetPort: metrics
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: katib-ui
+  namespace: katib-system
+  labels:
+    app: katib-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: katib-ui
+  template:
+    metadata:
+      labels:
+        app: katib-ui
+    spec:
+      serviceAccountName: katib-ui
+      containers:
+      - name: katib-ui
+        image: docker.io/kubeflowkatib/katib-ui:v0.16.0
+        args:
+          - "--port=8080"
+        ports:
+        - containerPort: 8080
+          name: ui
+        env:
+        - name: KATIB_CORE_NAMESPACE
+          value: katib-system
+        resources:
+          limits:
+            cpu: 200m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 128Mi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: katib-ui
+  namespace: katib-system
+spec:
+  type: ClusterIP
+  selector:
+    app: katib-ui
+  ports:
+  - name: ui
+    port: 80
+    protocol: TCP
+    targetPort: ui
+
+---
+# Storage for experiment results
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: katib-experiments-storage
+  namespace: katib-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn

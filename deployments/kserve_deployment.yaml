@@ -1,0 +1,128 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: ml-load-predictor
+  namespace: ml-scheduler
+  annotations:
+    serving.kserve.io/deploymentMode: "Serverless"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+spec:
+  predictor:
+    sklearn:
+      storageUri: "pvc://ml-models-storage/ml_predictor"
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: 2
+          memory: 4Gi
+      env:
+      - name: STORAGE_URI
+        value: "pvc://ml-models-storage/ml_predictor"
+      - name: MODEL_NAME
+        value: "ml-load-predictor"
+    minReplicas: 1
+    maxReplicas: 5
+    scaleTarget: 10
+    scaleMetric: concurrency
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-predictor-api
+  namespace: ml-scheduler
+  labels:
+    app: ml-predictor
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 5000
+    protocol: TCP
+    name: http
+  selector:
+    app: ml-predictor
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-predictor-api
+  namespace: ml-scheduler
+  labels:
+    app: ml-predictor
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ml-predictor
+  template:
+    metadata:
+      labels:
+        app: ml-predictor
+    spec:
+      containers:
+      - name: ml-predictor
+        image: python:3.11-slim
+        ports:
+        - containerPort: 5000
+        env:
+        - name: PYTHONPATH
+          value: "/app"
+        command:
+        - python
+        - /app/ml_predictor_service.py
+        resources:
+          requests:
+            cpu: 250m
+            memory: 512Mi
+          limits:
+            cpu: 1
+            memory: 2Gi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        volumeMounts:
+        - name: ml-predictor-code
+          mountPath: /app
+        - name: ml-predictor-models
+          mountPath: /models
+      volumes:
+      - name: ml-predictor-code
+        configMap:
+          name: ml-predictor-code
+      - name: ml-predictor-models
+        persistentVolumeClaim:
+          claimName: ml-models-storage
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-predictor-code
+  namespace: ml-scheduler
+data:
+  ml_predictor_service.py: |
+    # Service code embedded here
+    # In production, use proper image with code
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-models-storage
+  namespace: ml-scheduler
+spec:
+  accessModes:
+  - ReadWriteMany
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn

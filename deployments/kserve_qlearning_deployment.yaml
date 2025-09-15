@@ -1,0 +1,127 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qlearning-optimizer
+  namespace: kubeflow
+  labels:
+    app: ml-scheduler
+    component: qlearning-optimizer
+    expert: loptimiseur
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 70
+    scaleMetric: concurrency
+    containerConcurrency: 8
+    timeout: 30
+    canaryTrafficPercent: 0
+    sklearn:
+      storageUri: "pvc://qlearning-models/models/qlearning_optimizer"
+      resources:
+        requests:
+          cpu: 300m
+          memory: 512Mi
+        limits:
+          cpu: 1
+          memory: 2Gi
+      env:
+        - name: PYTHONPATH
+          value: "/opt/mlflow/artifacts"
+        - name: KSERVE_LOGLEVEL
+          value: "INFO"
+        - name: MODEL_NAME
+          value: "qlearning-optimizer"
+    serviceAccountName: kserve-models-web-app
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qlearning-models
+  namespace: kubeflow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: longhorn
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qlearning-optimizer-api
+  namespace: kubeflow
+  labels:
+    app: ml-scheduler
+    component: qlearning-optimizer
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    serving.kserve.io/inferenceservice: qlearning-optimizer
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: qlearning-optimizer-ingress
+  namespace: kubeflow
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - host: ml-scheduler.local
+    http:
+      paths:
+      - path: /qlearning(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: qlearning-optimizer-api
+            port:
+              number: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qlearning-optimizer-config
+  namespace: kubeflow
+data:
+  model_config.json: |
+    {
+      "model_name": "qlearning-optimizer",
+      "model_type": "Q-Learning Tabular",
+      "version": "1.0.0",
+      "states": 12,
+      "actions": 5,
+      "improvement_vs_random": 1997.7,
+      "business_score": 60.7,
+      "performance_targets": {
+        "latency_ms": 100,
+        "availability": 0.999,
+        "improvement_threshold": 15.0
+      }
+    }
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: qlearning-optimizer-monitor
+  namespace: kubeflow
+  labels:
+    app: ml-scheduler
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: ml-scheduler
+      component: qlearning-optimizer
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics

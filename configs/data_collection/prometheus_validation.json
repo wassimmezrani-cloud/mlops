@@ -1,0 +1,19 @@
+{
+  "validation_timestamp": "2025-09-05T12:00:53.933856",
+  "prometheus_url": "http://10.110.190.83:9090",
+  "connection_status": true,
+  "retention_days": 1,
+  "retention_sufficient": false,
+  "metrics_coverage_ok": true,
+  "available_metrics": [
+    "node_cpu_seconds_total",
+    "node_memory_MemAvailable_bytes",
+    "node_memory_MemTotal_bytes",
+    "node_load1",
+    "container_cpu_usage_seconds_total",
+    "container_memory_usage_bytes",
+    "kube_pod_info"
+  ],
+  "missing_metrics": [],
+  "validation_passed": false
+}

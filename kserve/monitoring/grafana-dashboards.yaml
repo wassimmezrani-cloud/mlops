@@ -1,0 +1,287 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-scheduler-grafana-dashboards
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+    app: ml-scheduler
+    component: monitoring
+data:
+  ml-scheduler-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "ML-Scheduler KServe Production Overview",
+        "tags": ["ml-scheduler", "kserve", "production"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Service Status Overview",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "up{job=~\".*ml-scheduler.*\"}",
+                "legendFormat": "{{job}}"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "mappings": [
+                  {"options": {"0": {"text": "DOWN", "color": "red"}}, "type": "value"},
+                  {"options": {"1": {"text": "UP", "color": "green"}}, "type": "value"}
+                ]
+              }
+            },
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Request Rate (RPS)",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(istio_requests_total{destination_service_namespace=\"ml-scheduler\"}[5m])",
+                "legendFormat": "{{destination_service_name}}"
+              }
+            ],
+            "yAxes": [{"label": "Requests/sec"}],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Response Time P99 (ms)",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service_namespace=\"ml-scheduler\"}[5m]))",
+                "legendFormat": "{{destination_service_name}} P99"
+              },
+              {
+                "expr": "histogram_quantile(0.95, rate(istio_request_duration_milliseconds_bucket{destination_service_namespace=\"ml-scheduler\"}[5m]))",
+                "legendFormat": "{{destination_service_name}} P95"
+              }
+            ],
+            "yAxes": [{"label": "Latency (ms)"}],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 4,
+            "title": "Error Rate (%)",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(istio_requests_total{destination_service_namespace=\"ml-scheduler\",response_code!=\"200\"}[5m]) / rate(istio_requests_total{destination_service_namespace=\"ml-scheduler\"}[5m]) * 100",
+                "legendFormat": "{{destination_service_name}}"
+              }
+            ],
+            "yAxes": [{"label": "Error Rate (%)"}],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s"
+      }
+    }
+  
+  ml-scheduler-expert-details.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "ML-Scheduler Expert Services Detailed Metrics",
+        "tags": ["ml-scheduler", "experts", "detailed"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "XGBoost Le Prophète - Performance",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service_name=\"xgboost-load-predictor\"}[5m]))",
+                "legendFormat": "P99 Latency"
+              },
+              {
+                "expr": "rate(istio_requests_total{destination_service_name=\"xgboost-load-predictor\",response_code=\"200\"}[5m]) * 60",
+                "legendFormat": "Throughput (RPM)"
+              }
+            ],
+            "yAxes": [{"label": "ms / RPM"}],
+            "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0}
+          },
+          {
+            "id": 2, 
+            "title": "Q-Learning L'Optimiseur - Performance",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service_name=\"qlearning-placement-optimizer\"}[5m]))",
+                "legendFormat": "P99 Latency"
+              },
+              {
+                "expr": "rate(istio_requests_total{destination_service_name=\"qlearning-placement-optimizer\",response_code=\"200\"}[5m]) * 60",
+                "legendFormat": "Throughput (RPM)"
+              }
+            ],
+            "yAxes": [{"label": "ms / RPM"}],
+            "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Isolation Le Détective - Performance", 
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service_name=\"isolation-anomaly-detector\"}[5m]))",
+                "legendFormat": "P99 Latency"
+              },
+              {
+                "expr": "rate(istio_requests_total{destination_service_name=\"isolation-anomaly-detector\",response_code=\"200\"}[5m]) * 60",
+                "legendFormat": "Throughput (RPM)"
+              }
+            ],
+            "yAxes": [{"label": "ms / RPM"}],
+            "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Resource Usage - CPU",
+            "type": "graph", 
+            "targets": [
+              {
+                "expr": "rate(container_cpu_usage_seconds_total{namespace=\"ml-scheduler\"}[5m]) * 100",
+                "legendFormat": "{{pod}} CPU%"
+              }
+            ],
+            "yAxes": [{"label": "CPU Usage %"}],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Resource Usage - Memory",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "container_memory_usage_bytes{namespace=\"ml-scheduler\"} / container_spec_memory_limit_bytes{namespace=\"ml-scheduler\"} * 100",
+                "legendFormat": "{{pod}} Memory%"
+              }
+            ],
+            "yAxes": [{"label": "Memory Usage %"}],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          }
+        ],
+        "time": {"from": "now-1h", "to": "now"},
+        "refresh": "30s"
+      }
+    }
+  
+  ml-scheduler-business-impact.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "ML-Scheduler Business Impact Metrics",
+        "tags": ["ml-scheduler", "business", "impact"],
+        "timezone": "browser", 
+        "panels": [
+          {
+            "id": 1,
+            "title": "Prediction Accuracy Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "ml_scheduler:prediction_accuracy_rate",
+                "legendFormat": "Accuracy %"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "thresholds": {"steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 85},
+                  {"color": "green", "value": 90}
+                ]}
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 0, "y": 0}
+          },
+          {
+            "id": 2,
+            "title": "Decision Latency P99",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "ml_scheduler:decision_latency_p99",
+                "legendFormat": "P99 Latency"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "ms",
+                "thresholds": {"steps": [
+                  {"color": "green", "value": 0},
+                  {"color": "yellow", "value": 100},
+                  {"color": "red", "value": 150}
+                ]}
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 6, "y": 0}
+          },
+          {
+            "id": 3,
+            "title": "Resource Optimization Rate",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "ml_scheduler:resource_optimization_rate",
+                "legendFormat": "Optimization %"
+              }
+            ],
+            "fieldConfig": {
+              "defaults": {
+                "unit": "percent",
+                "thresholds": {"steps": [
+                  {"color": "red", "value": 0},
+                  {"color": "yellow", "value": 20},
+                  {"color": "green", "value": 25}
+                ]}
+              }
+            },
+            "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0}
+          },
+          {
+            "id": 4,
+            "title": "Cluster Efficiency Trend",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "ml_scheduler_cluster_efficiency_current",
+                "legendFormat": "Current Efficiency"
+              },
+              {
+                "expr": "ml_scheduler_cluster_efficiency_before",
+                "legendFormat": "Baseline Efficiency"
+              }
+            ],
+            "yAxes": [{"label": "Efficiency Score"}],
+            "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+          },
+          {
+            "id": 5,
+            "title": "Incident Reduction Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(ml_scheduler_incidents_total[1d])",
+                "legendFormat": "Daily Incident Rate"
+              }
+            ],
+            "yAxes": [{"label": "Incidents/Day"}],
+            "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8}
+          }
+        ],
+        "time": {"from": "now-24h", "to": "now"},
+        "refresh": "5m"
+      }
+    }

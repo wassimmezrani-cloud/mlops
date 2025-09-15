@@ -1,0 +1,371 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-scheduler
+  namespace: kube-system
+  labels:
+    app: ml-scheduler
+    component: scheduler
+    version: v1.0.0
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ml-scheduler
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: ml-scheduler
+        component: scheduler
+        version: v1.0.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: ml-scheduler
+      containers:
+      - name: ml-scheduler
+        image: ml-scheduler:v1.0.0
+        imagePullPolicy: IfNotPresent
+        command:
+        - /usr/local/bin/ml-scheduler
+        - --config=/etc/kubernetes/scheduler-config.yaml
+        - --v=2
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+        ports:
+        - name: metrics
+          containerPort: 8080
+          protocol: TCP
+        - name: health
+          containerPort: 8081
+          protocol: TCP
+        - name: scheduler
+          containerPort: 10259
+          protocol: TCP
+        env:
+        - name: KUBE_SCHEDULER_NAME
+          value: "ml-scheduler"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: config
+          mountPath: /etc/kubernetes
+          readOnly: true
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 10259
+            scheme: HTTPS
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 10259
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 65534
+          capabilities:
+            drop:
+            - ALL
+      volumes:
+      - name: config
+        configMap:
+          name: ml-scheduler-config
+      nodeSelector:
+        kubernetes.io/os: linux
+      tolerations:
+      - key: node-role.kubernetes.io/master
+        operator: Exists
+        effect: NoSchedule
+      - key: node-role.kubernetes.io/control-plane
+        operator: Exists
+        effect: NoSchedule
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - ml-scheduler
+              topologyKey: kubernetes.io/hostname
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-scheduler-config
+  namespace: kube-system
+  labels:
+    app: ml-scheduler
+    component: configuration
+data:
+  scheduler-config.yaml: |
+    apiVersion: kubescheduler.config.k8s.io/v1beta3
+    kind: KubeSchedulerConfiguration
+    profiles:
+    - schedulerName: ml-scheduler
+      plugins:
+        score:
+          enabled:
+          - name: MLScheduler
+            weight: 100
+          disabled:
+          - name: NodeResourcesFit
+      pluginConfig:
+      - name: MLScheduler
+        args:
+          # Plugin configuration
+          pluginName: MLScheduler
+          pluginWeight: 100
+          enableProfile: false
+          
+          # ML Service endpoints (production KServe services)
+          xgboostEndpoint: "https://xgboost.ml-scheduler.hydatis.local/v1/models/xgboost-load-predictor:predict"
+          qlearningEndpoint: "https://qlearning.ml-scheduler.hydatis.local/v1/models/qlearning-placement-optimizer:predict"
+          isolationEndpoint: "https://isolation.ml-scheduler.hydatis.local/v1/models/isolation-anomaly-detector:predict"
+          
+          # HTTP client configuration
+          httpTimeout: 30s
+          maxRetries: 3
+          retryDelay: 100ms
+          connectionTimeout: 10s
+          maxIdleConns: 100
+          maxIdleConnsHost: 10
+          
+          # Circuit breaker configuration
+          circuitBreaker:
+            maxRequests: 10
+            interval: 30s
+            timeout: 60s
+            failureThreshold: 5
+            successThreshold: 3
+            onStateChange: true
+          
+          # Decision fusion configuration
+          fusionWeights:
+            xgboostWeight: 0.4
+            qlearningWeight: 0.4
+            isolationWeight: 0.2
+            normalizeWeights: true
+          
+          confidenceThresholds:
+            xgboost: 0.75
+            qlearning: 0.6
+            isolation: 0.8
+          
+          fallbackPolicy:
+            enableFallback: true
+            fallbackTimeout: 5s
+            minServicesRequired: 1
+            useKubernetesDefault: true
+            cacheLastDecisions: true
+            cacheTTL: 5m
+          
+          # Performance configuration
+          metricsEnabled: true
+          metricsPort: 8080
+          healthCheckPort: 8081
+          decisionTimeout: 200ms
+          concurrentRequests: 100
+          
+          # Business logic configuration
+          resourceOptimizationWeight: 0.3
+          loadBalancingWeight: 0.3
+          anomalyAvoidanceWeight: 0.4
+          performancePenaltyFactor: 0.1
+          
+          # Logging and debugging
+          logLevel: "info"
+          enableTracing: true
+          tracingEndpoint: "http://jaeger-collector.monitoring.svc.cluster.local:14268/api/traces"
+
+    leaderElection:
+      leaderElect: true
+      resourceNamespace: kube-system
+      resourceName: ml-scheduler
+
+    healthzBindAddress: 0.0.0.0:10259
+    metricsBindAddress: 0.0.0.0:10259
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ml-scheduler
+  namespace: kube-system
+  labels:
+    app: ml-scheduler
+    component: serviceaccount
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: rbac
+rules:
+# Scheduler permissions
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims", "persistentvolumes"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["namespaces"]
+  verbs: ["get", "list", "watch"]
+# Events for scheduler decisions
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch", "update"]
+# Binding permissions
+- apiGroups: [""]
+  resources: ["bindings"]
+  verbs: ["create"]
+# Storage classes and CSI
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses", "csinodes", "csistoragecapacities", "csidrivers"]
+  verbs: ["get", "list", "watch"]
+# Apps and workloads
+- apiGroups: ["apps"]
+  resources: ["replicasets", "deployments", "daemonsets"]
+  verbs: ["get", "list", "watch"]
+# Coordination for leader election
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["create", "get", "list", "watch", "update", "patch"]
+# Node resources and metrics
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["nodes", "pods"]
+  verbs: ["get", "list"]
+# Custom metrics for ML decisions
+- apiGroups: ["custom.metrics.k8s.io"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+# Policy for pod security and priority
+- apiGroups: ["policy"]
+  resources: ["poddisruptionbudgets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["scheduling.k8s.io"]
+  resources: ["priorityclasses"]
+  verbs: ["get", "list", "watch"]
+# Networking
+- apiGroups: ["networking.k8s.io"]
+  resources: ["networkpolicies"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: ml-scheduler
+subjects:
+- kind: ServiceAccount
+  name: ml-scheduler
+  namespace: kube-system
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-scheduler-metrics
+  namespace: kube-system
+  labels:
+    app: ml-scheduler
+    component: metrics
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  type: ClusterIP
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: metrics
+    protocol: TCP
+  - name: health
+    port: 8081
+    targetPort: health
+    protocol: TCP
+  selector:
+    app: ml-scheduler
+    component: scheduler
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ml-scheduler
+  namespace: kube-system
+  labels:
+    app: ml-scheduler
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: ml-scheduler
+      component: metrics
+  endpoints:
+  - port: metrics
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    honorLabels: true
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: "ml_scheduler_.*"
+      targetLabel: scheduler_type
+      replacement: "ml_scheduler"
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ml-scheduler
+  namespace: kube-system
+  labels:
+    app: ml-scheduler
+    component: availability
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ml-scheduler
+      component: scheduler

@@ -1,0 +1,297 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: performance-tuning-config
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: performance-optimization
+data:
+  # Model Serving Performance Configuration
+  kserve-performance.yaml: |
+    # KServe Performance Tuning Configuration
+    
+    # Global Performance Settings
+    global:
+      enable_model_caching: true
+      cache_size_mb: 2048
+      warmup_enabled: true
+      batch_processing: true
+      connection_pooling: true
+      
+    # XGBoost Predictor Performance
+    xgboost_predictor:
+      model_name: "xgboost_load_predictor"
+      performance_targets:
+        latency_p99_ms: 75
+        throughput_rps: 500
+        cpu_utilization_target: 70
+        memory_utilization_target: 80
+      
+      optimization:
+        batch_size: 32
+        batch_timeout_ms: 50
+        max_batch_delay_ms: 100
+        num_worker_threads: 4
+        prefetch_batches: 2
+        
+      caching:
+        feature_cache_enabled: true
+        feature_cache_ttl_seconds: 300
+        prediction_cache_enabled: true
+        prediction_cache_ttl_seconds: 60
+        cache_size_mb: 1024
+        
+      connection_pool:
+        max_connections: 100
+        connection_timeout_seconds: 30
+        keepalive_time_seconds: 600
+        
+    # Q-Learning Optimizer Performance  
+    qlearning_optimizer:
+      model_name: "qlearning_placement_optimizer"
+      performance_targets:
+        latency_p99_ms: 100
+        throughput_rps: 300
+        cpu_utilization_target: 60
+        memory_utilization_target: 75
+        
+      optimization:
+        batch_size: 16
+        batch_timeout_ms: 75
+        max_batch_delay_ms: 150
+        num_worker_threads: 2
+        prefetch_batches: 1
+        q_table_optimization: true
+        
+      caching:
+        q_table_cache_enabled: true
+        q_table_cache_ttl_seconds: 1800
+        state_cache_enabled: true
+        state_cache_ttl_seconds: 120
+        cache_size_mb: 512
+        
+      connection_pool:
+        max_connections: 50
+        connection_timeout_seconds: 30
+        keepalive_time_seconds: 400
+        
+    # Isolation Forest Performance
+    isolation_detector:
+      model_name: "isolation_anomaly_detector"
+      performance_targets:
+        latency_p99_ms: 50
+        throughput_rps: 200
+        cpu_utilization_target: 50
+        memory_utilization_target: 70
+        
+      optimization:
+        batch_size: 64
+        batch_timeout_ms: 25
+        max_batch_delay_ms: 50
+        num_worker_threads: 2
+        prefetch_batches: 1
+        
+      caching:
+        feature_cache_enabled: true
+        feature_cache_ttl_seconds: 180
+        anomaly_cache_enabled: false
+        cache_size_mb: 256
+        
+      connection_pool:
+        max_connections: 30
+        connection_timeout_seconds: 20
+        keepalive_time_seconds: 300
+
+  # Load Testing Configuration
+  load-testing.yaml: |
+    # Load Testing Configuration for ML-Scheduler Services
+    
+    test_scenarios:
+      # XGBoost Load Prediction Tests
+      xgboost_load_test:
+        target_url: "https://xgboost.ml-scheduler.hydatis.local/v1/models/xgboost-load-predictor:predict"
+        concurrent_users: [10, 50, 100, 200, 500]
+        test_duration_seconds: 300
+        ramp_up_duration_seconds: 60
+        
+        request_payload:
+          instances:
+          - cpu_usage_rate: 0.75
+            memory_usage_rate: 0.65
+            network_io: 1024000
+            disk_io: 512000
+            hour_of_day: 14
+            day_of_week: 2
+            business_hours: 1
+            cpu_pressure: 0.25
+            memory_pressure: 0.35
+            efficiency_ratio: 0.85
+            load_trend_1h: 0.15
+            resource_volatility: 0.08
+            
+        performance_assertions:
+          max_response_time_ms: 75
+          min_throughput_rps: 500
+          error_rate_percent: 0.1
+          
+      # Q-Learning Placement Tests  
+      qlearning_load_test:
+        target_url: "https://qlearning.ml-scheduler.hydatis.local/v1/models/qlearning-placement-optimizer:predict"
+        concurrent_users: [5, 25, 50, 100, 300]
+        test_duration_seconds: 300
+        ramp_up_duration_seconds: 60
+        
+        request_payload:
+          instances:
+          - node_cpu_available: 0.40
+            node_memory_available: 0.55
+            node_load_score: 0.60
+            pod_cpu_request: 0.20
+            pod_memory_request: 0.15
+            pod_priority: 0
+            cluster_fragmentation: 0.30
+            node_affinity_score: 0.80
+            
+        performance_assertions:
+          max_response_time_ms: 100
+          min_throughput_rps: 300
+          error_rate_percent: 0.1
+          
+      # Isolation Forest Anomaly Tests
+      isolation_load_test:
+        target_url: "https://isolation.ml-scheduler.hydatis.local/v1/models/isolation-anomaly-detector:predict"
+        concurrent_users: [10, 25, 50, 100, 200]
+        test_duration_seconds: 300
+        ramp_up_duration_seconds: 60
+        
+        request_payload:
+          instances:
+          - cpu_usage_rate: 0.85
+            memory_usage_rate: 0.70
+            network_io: 2048000
+            disk_io: 1024000
+            cpu_pressure: 0.15
+            memory_pressure: 0.25
+            load_average: 2.5
+            context_switches: 15000
+            interrupt_rate: 8000
+            swap_usage: 0.05
+            disk_utilization: 0.75
+            network_errors: 10
+            
+        performance_assertions:
+          max_response_time_ms: 50
+          min_throughput_rps: 200
+          error_rate_percent: 0.1
+
+  # Chaos Engineering Configuration
+  chaos-testing.yaml: |
+    # Chaos Engineering Tests for Resilience Validation
+    
+    chaos_experiments:
+      # Pod Failure Tests
+      pod_failure_test:
+        description: "Test service resilience to pod failures"
+        duration_minutes: 10
+        target_services: ["xgboost-predictor", "qlearning-optimizer", "isolation-detector"]
+        failure_scenarios:
+        - kill_random_pods: 1
+        - kill_percentage_pods: 0.3
+        - resource_exhaustion: "memory"
+        expected_behavior:
+          service_availability: ">99%"
+          max_recovery_time_seconds: 30
+          error_rate_increase: "<2%"
+          
+      # Network Partition Tests
+      network_partition_test:
+        description: "Test network partition resilience"
+        duration_minutes: 5
+        scenarios:
+        - partition_from_api_gateway: true
+        - partition_between_services: true
+        - intermittent_connectivity: true
+        expected_behavior:
+          circuit_breaker_activation: true
+          fallback_behavior: true
+          recovery_after_partition: "<60s"
+          
+      # Resource Stress Tests
+      resource_stress_test:
+        description: "Test behavior under resource stress"
+        duration_minutes: 15
+        stress_scenarios:
+        - cpu_stress: "90%"
+        - memory_stress: "85%"
+        - disk_stress: "95%"
+        expected_behavior:
+          graceful_degradation: true
+          autoscaling_activation: true
+          performance_maintained: ">80%"
+
+  # Warmup Configuration
+  model-warmup.yaml: |
+    # Model Warmup Configuration for Cold Start Reduction
+    
+    warmup_configuration:
+      enabled: true
+      warmup_on_startup: true
+      periodic_warmup: true
+      warmup_interval_minutes: 30
+      
+      # XGBoost Warmup
+      xgboost_warmup:
+        enabled: true
+        warmup_requests: 10
+        warmup_data_samples: 5
+        concurrent_warmup: true
+        sample_requests:
+        - cpu_usage_rate: 0.65
+          memory_usage_rate: 0.55
+          network_io: 512000
+          disk_io: 256000
+          hour_of_day: 9
+          day_of_week: 1
+          business_hours: 1
+          cpu_pressure: 0.15
+          memory_pressure: 0.20
+          efficiency_ratio: 0.90
+          load_trend_1h: 0.05
+          resource_volatility: 0.03
+          
+      # Q-Learning Warmup
+      qlearning_warmup:
+        enabled: true
+        warmup_requests: 5
+        warmup_data_samples: 3
+        q_table_preload: true
+        sample_requests:
+        - node_cpu_available: 0.60
+          node_memory_available: 0.70
+          node_load_score: 0.40
+          pod_cpu_request: 0.10
+          pod_memory_request: 0.08
+          pod_priority: 0
+          cluster_fragmentation: 0.20
+          node_affinity_score: 0.90
+          
+      # Isolation Forest Warmup
+      isolation_warmup:
+        enabled: true
+        warmup_requests: 8
+        warmup_data_samples: 4
+        model_preload: true
+        sample_requests:
+        - cpu_usage_rate: 0.45
+          memory_usage_rate: 0.40
+          network_io: 128000
+          disk_io: 64000
+          cpu_pressure: 0.05
+          memory_pressure: 0.08
+          load_average: 1.2
+          context_switches: 5000
+          interrupt_rate: 3000
+          swap_usage: 0.02
+          disk_utilization: 0.35
+          network_errors: 2

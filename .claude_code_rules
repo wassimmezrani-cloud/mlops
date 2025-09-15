@@ -1,0 +1,19 @@
+# Configuration Claude Code - MLOps Project
+code_style:
+  clean_code: true
+  rules:
+    - no_emojis: true
+      description: "Eviter l'utilisation d'emojis dans le code, commentaires et noms de variables"
+      reason: "Les emojis peuvent causer des problemes d'encodage et nuire a la lisibilite du code"
+    - descriptive_naming: true
+      description: "Utiliser des noms de variables explicites"
+      reason: "Ameliore la lisibilite et la maintenabilite du code"
+    - clear_comments: true
+      description: "Commentaires factuels et professionnels"
+      reason: "Documentation technique claire"
+
+restrictions:
+  - "Aucun emoji dans le code source"
+  - "Noms de variables explicites en anglais ou francais"
+  - "Commentaires factuels sans emojis decoratifs"
+  - "Messages de commit professionnels"

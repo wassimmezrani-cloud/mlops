@@ -1,0 +1,182 @@
+# XGBoost "Le Prophète" - Production InferenceService
+
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: xgboost-load-predictor
+  namespace: ml-scheduler-prod
+  labels:
+    component: ml-scheduler
+    model: xgboost-prophete
+    version: optimized-v1.0
+  annotations:
+    serving.kserve.io/enable-metric-aggregation: "true"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+spec:
+  predictor:
+    serviceAccountName: ml-scheduler-inference
+    minReplicas: 1
+    maxReplicas: 5
+    scaleTarget: 70
+    scaleMetric: cpu
+    model:
+      modelFormat:
+        name: xgboost
+      runtime: kserve-xgbserver
+      runtimeVersion: "1.7.3"
+      storageUri: "s3://mlflow-bucket/models/xgboost-load-predictor/optimized-v1.0"
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+          nvidia.com/gpu: "0"
+        limits:
+          cpu: "2"
+          memory: 4Gi
+          nvidia.com/gpu: "0"
+      env:
+      - name: STORAGE_URI
+        value: "s3://mlflow-bucket/models/xgboost-load-predictor/optimized-v1.0"
+      - name: MODEL_NAME
+        value: "xgboost-load-predictor"
+      - name: PROTOCOL_VERSION
+        value: "v2"
+      - name: LOG_LEVEL
+        value: "INFO"
+      - name: WORKERS_PER_CORE
+        value: "2"
+    volumeMounts:
+    - name: model-storage
+      mountPath: /mnt/models
+      readOnly: true
+    volumes:
+    - name: model-storage
+      persistentVolumeClaim:
+        claimName: ml-models-storage
+        
+  transformer:
+    containers:
+    - name: feature-transformer
+      image: hydatis.local/ml-scheduler/xgboost-transformer:v1.0.0
+      ports:
+      - containerPort: 8080
+        protocol: TCP
+      env:
+      - name: PREDICTOR_HOST
+        value: "xgboost-load-predictor-predictor-default"
+      - name: PROTOCOL_VERSION
+        value: "v2"
+      - name: FEATURE_COLUMNS
+        value: "cpu_usage,memory_usage,disk_io,network_io,load_avg,cpu_pressure,memory_pressure"
+      - name: TIME_WINDOW_SIZE
+        value: "60"  # 60 minutes for feature aggregation
+      - name: LAG_FEATURES
+        value: "5"   # 5 lag features from Katib optimization
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 8080
+        initialDelaySeconds: 10
+        periodSeconds: 5
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 30
+        periodSeconds: 10
+
+---
+# Service Monitor for Prometheus scraping
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: xgboost-load-predictor-metrics
+  namespace: ml-scheduler-prod
+  labels:
+    model: xgboost-prophete
+spec:
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: xgboost-load-predictor
+  endpoints:
+  - port: http-metrics
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+  - port: http-metrics
+    path: /v2/health
+    interval: 30s
+    scrapeTimeout: 5s
+
+---
+# HorizontalPodAutoscaler for advanced scaling
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: xgboost-load-predictor-hpa
+  namespace: ml-scheduler-prod
+spec:
+  scaleTargetRef:
+    apiVersion: serving.kserve.io/v1beta1
+    kind: InferenceService
+    name: xgboost-load-predictor
+  minReplicas: 1
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  # Custom metrics for ML-specific scaling
+  - type: Object
+    object:
+      metric:
+        name: inference_requests_per_second
+      target:
+        type: Value
+        value: "50"
+      describedObject:
+        apiVersion: serving.kserve.io/v1beta1
+        kind: InferenceService
+        name: xgboost-load-predictor
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 25
+        periodSeconds: 60
+
+---
+# PodDisruptionBudget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: xgboost-load-predictor-pdb
+  namespace: ml-scheduler-prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: xgboost-load-predictor

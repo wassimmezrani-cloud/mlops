@@ -1,0 +1,277 @@
+# Q-Learning "L'Optimiseur" - Hyperparameter Optimization Experiment
+
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: qlearning-placement-optimizer-optimization
+  namespace: kubeflow
+  labels:
+    component: ml-scheduler
+    model: qlearning-optimiseur
+    stage: hyperparameter-tuning
+spec:
+  algorithm:
+    algorithmName: bayesianoptimization
+    algorithmSettings:
+    - name: "base_estimator"
+      value: "GP"
+    - name: "n_initial_points"
+      value: "15"
+    - name: "acq_func"
+      value: "gp_hedge"
+    - name: "random_state"
+      value: "42"
+  
+  objective:
+    type: maximize
+    goal: 0.85
+    objectiveMetricName: placement_efficiency
+    additionalMetricNames:
+    - convergence_speed
+    - exploration_ratio
+    - average_reward
+    - resource_utilization_improvement
+    - load_balancing_score
+    - scheduling_latency
+
+  parameters:
+  # Core Q-Learning hyperparameters
+  - name: learning_rate
+    parameterType: double
+    feasibleSpace:
+      min: "0.001"
+      max: "0.1"
+  - name: discount_factor
+    parameterType: double
+    feasibleSpace:
+      min: "0.9"
+      max: "0.99"
+  - name: epsilon_start
+    parameterType: double
+    feasibleSpace:
+      min: "0.5"
+      max: "1.0"
+  - name: epsilon_end
+    parameterType: double
+    feasibleSpace:
+      min: "0.01"
+      max: "0.1"
+  - name: epsilon_decay
+    parameterType: double
+    feasibleSpace:
+      min: "0.995"
+      max: "0.9999"
+  
+  # Neural Network Architecture
+  - name: hidden_layers
+    parameterType: categorical
+    feasibleSpace:
+      list: ["64,32", "128,64", "256,128", "128,64,32", "256,128,64"]
+  - name: activation_function
+    parameterType: categorical
+    feasibleSpace:
+      list: ["relu", "tanh", "elu"]
+  - name: dropout_rate
+    parameterType: double
+    feasibleSpace:
+      min: "0.0"
+      max: "0.3"
+  
+  # Experience Replay
+  - name: replay_buffer_size
+    parameterType: int
+    feasibleSpace:
+      min: "10000"
+      max: "100000"
+      step: "10000"
+  - name: batch_size
+    parameterType: categorical
+    feasibleSpace:
+      list: ["32", "64", "128", "256"]
+  - name: target_update_frequency
+    parameterType: int
+    feasibleSpace:
+      min: "100"
+      max: "1000"
+      step: "100"
+  
+  # Environment Specific
+  - name: state_representation
+    parameterType: categorical
+    feasibleSpace:
+      list: ["basic", "extended", "clustered"]
+  - name: reward_function
+    parameterType: categorical
+    feasibleSpace:
+      list: ["utilization", "balanced", "latency_aware", "composite"]
+  - name: action_space_size
+    parameterType: int
+    feasibleSpace:
+      min: "10"
+      max: "50"
+      step: "5"
+  
+  # Training Parameters
+  - name: training_episodes
+    parameterType: int
+    feasibleSpace:
+      min: "5000"
+      max: "20000"
+      step: "2500"
+  - name: max_steps_per_episode
+    parameterType: int
+    feasibleSpace:
+      min: "100"
+      max: "500"
+      step: "50"
+
+  parallelTrialCount: 6
+  maxTrialCount: 120
+  maxFailedTrialCount: 12
+
+  trialTemplate:
+    primaryContainerName: qlearning-training
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            restartPolicy: Never
+            containers:
+            - name: qlearning-training
+              image: hydatis.local/ml-scheduler/qlearning-trainer:v1.0.0
+              command:
+                - python3
+                - /app/qlearning_hyperopt.py
+              args:
+                - --learning-rate=${trialParameters.learningRate}
+                - --discount-factor=${trialParameters.discountFactor}
+                - --epsilon-start=${trialParameters.epsilonStart}
+                - --epsilon-end=${trialParameters.epsilonEnd}
+                - --epsilon-decay=${trialParameters.epsilonDecay}
+                - --hidden-layers=${trialParameters.hiddenLayers}
+                - --activation-function=${trialParameters.activationFunction}
+                - --dropout-rate=${trialParameters.dropoutRate}
+                - --replay-buffer-size=${trialParameters.replayBufferSize}
+                - --batch-size=${trialParameters.batchSize}
+                - --target-update-frequency=${trialParameters.targetUpdateFrequency}
+                - --state-representation=${trialParameters.stateRepresentation}
+                - --reward-function=${trialParameters.rewardFunction}
+                - --action-space-size=${trialParameters.actionSpaceSize}
+                - --training-episodes=${trialParameters.trainingEpisodes}
+                - --max-steps-per-episode=${trialParameters.maxStepsPerEpisode}
+                - --cluster-simulation-data=/data/cluster-traces
+                - --output-dir=/output
+                - --mlflow-tracking-uri=http://mlflow-server.kubeflow.svc.cluster.local:5000
+                - --experiment-name=qlearning-placement-optimizer
+                - --enable-tensorboard
+                - --tensorboard-log-dir=/output/tensorboard
+              env:
+              - name: CUDA_VISIBLE_DEVICES
+                value: "0"
+              - name: KATIB_EXPERIMENT_NAME
+                value: qlearning-placement-optimizer-optimization
+              - name: PYTHONPATH
+                value: "/app:/app/lib"
+              - name: TF_CPP_MIN_LOG_LEVEL
+                value: "2"
+              volumeMounts:
+              - name: data-volume
+                mountPath: /data
+              - name: output-volume
+                mountPath: /output
+              - name: shared-memory
+                mountPath: /dev/shm
+              resources:
+                requests:
+                  cpu: 4
+                  memory: 8Gi
+                  nvidia.com/gpu: 1
+                limits:
+                  cpu: 8
+                  memory: 16Gi
+                  nvidia.com/gpu: 1
+            volumes:
+            - name: data-volume
+              persistentVolumeClaim:
+                claimName: ml-scheduler-data
+            - name: output-volume
+              persistentVolumeClaim:
+                claimName: katib-experiments-storage
+            - name: shared-memory
+              emptyDir:
+                medium: Memory
+                sizeLimit: 2Gi
+
+  metricsCollectorSpec:
+    collector:
+      kind: StdOut
+    source:
+      filter:
+        metricsFormat:
+        - "placement_efficiency=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "convergence_speed=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "exploration_ratio=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "average_reward=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "resource_utilization_improvement=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "load_balancing_score=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "scheduling_latency=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+
+---
+# TensorBoard Service for Q-Learning visualization
+apiVersion: v1
+kind: Service
+metadata:
+  name: qlearning-tensorboard
+  namespace: kubeflow
+spec:
+  selector:
+    app: qlearning-tensorboard
+  ports:
+  - name: tensorboard
+    port: 6006
+    targetPort: 6006
+  type: ClusterIP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qlearning-tensorboard
+  namespace: kubeflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: qlearning-tensorboard
+  template:
+    metadata:
+      labels:
+        app: qlearning-tensorboard
+    spec:
+      containers:
+      - name: tensorboard
+        image: tensorflow/tensorflow:2.13.0
+        command:
+        - tensorboard
+        - --logdir=/logs
+        - --host=0.0.0.0
+        - --port=6006
+        - --reload_interval=30
+        ports:
+        - containerPort: 6006
+        volumeMounts:
+        - name: tensorboard-logs
+          mountPath: /logs
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+      volumes:
+      - name: tensorboard-logs
+        persistentVolumeClaim:
+          claimName: katib-experiments-storage

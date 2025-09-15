@@ -1,0 +1,204 @@
+# ML-Scheduler Production Namespace Setup
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-scheduler-prod
+  labels:
+    name: ml-scheduler-prod
+    component: ml-inference
+    project: hydatis-ml-scheduler
+    istio-injection: enabled
+    serving.kserve.io/inferenceservice: enabled
+
+---
+# Service Account for KServe inference services
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ml-scheduler-inference
+  namespace: ml-scheduler-prod
+  annotations:
+    serving.kserve.io/enable-metric-aggregation: "true"
+
+---
+# RBAC for ML inference services
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  namespace: ml-scheduler-prod
+  name: ml-inference-role
+rules:
+- apiGroups: [""]
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+- apiGroups: ["serving.kserve.io"]
+  resources: ["inferenceservices"]
+  verbs: ["get", "list", "watch", "update", "patch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ml-inference-binding
+  namespace: ml-scheduler-prod
+subjects:
+- kind: ServiceAccount
+  name: ml-scheduler-inference
+  namespace: ml-scheduler-prod
+roleRef:
+  kind: Role
+  name: ml-inference-role
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Network Policy for ML services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ml-scheduler-network-policy
+  namespace: ml-scheduler-prod
+spec:
+  podSelector:
+    matchLabels:
+      component: ml-inference
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    # Allow from kube-system (scheduler plugin)
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    # Allow from monitoring
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    # Allow from istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8081
+    - protocol: TCP  
+      port: 9090
+  egress:
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 53
+    - protocol: UDP
+      port: 53
+  # Allow egress to MLflow registry
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kubeflow
+    ports:
+    - protocol: TCP
+      port: 5000
+
+---
+# ConfigMap with model configurations
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-models-config
+  namespace: ml-scheduler-prod
+data:
+  models.yaml: |
+    models:
+      xgboost_predictor:
+        name: "xgboost-load-predictor"
+        version: "optimized-v1.0"
+        runtime: "kserve-xgbserver"
+        resource_requests:
+          cpu: "500m"
+          memory: "1Gi"
+        resource_limits:
+          cpu: "2"
+          memory: "4Gi"
+        autoscaling:
+          min_replicas: 1
+          max_replicas: 5
+          target_cpu: 70
+        health_check:
+          path: "/v1/models/xgboost-load-predictor"
+          interval: 30
+          timeout: 5
+          
+      qlearning_optimizer:
+        name: "qlearning-placement-optimizer"
+        version: "optimized-v1.0"
+        runtime: "kserve-torchserve"
+        resource_requests:
+          cpu: "1"
+          memory: "2Gi"
+        resource_limits:
+          cpu: "4"
+          memory: "8Gi"
+        autoscaling:
+          min_replicas: 1
+          max_replicas: 3
+          target_cpu: 75
+        health_check:
+          path: "/v1/models/qlearning-placement-optimizer"
+          interval: 30
+          timeout: 5
+          
+      isolation_detector:
+        name: "isolation-anomaly-detector"
+        version: "optimized-v1.0"
+        runtime: "kserve-sklearn"  
+        resource_requests:
+          cpu: "200m"
+          memory: "512Mi"
+        resource_limits:
+          cpu: "1"
+          memory: "2Gi"
+        autoscaling:
+          min_replicas: 1
+          max_replicas: 2
+          target_cpu: 60
+        health_check:
+          path: "/v1/models/isolation-anomaly-detector"
+          interval: 30
+          timeout: 5
+
+---
+# Storage for model artifacts
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-models-storage
+  namespace: ml-scheduler-prod
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: longhorn
+
+---
+# Secret for MLflow registry access
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mlflow-registry-secret
+  namespace: ml-scheduler-prod
+type: Opaque
+data:
+  # MLflow tracking URI (base64 encoded)
+  MLFLOW_TRACKING_URI: aHR0cDovL21sZmxvdy1zZXJ2ZXIua3ViZWZsb3cuc3ZjLmNsdXN0ZXIubG9jYWw6NTAwMA==
+  # MLflow S3 endpoint for model artifacts
+  AWS_ENDPOINT_URL: aHR0cDovL21pbmlvLmt1YmVmbG93LnN2Yy5jbHVzdGVyLmxvY2FsOjkwMDA=
+  AWS_ACCESS_KEY_ID: bWluaW8=
+  AWS_SECRET_ACCESS_KEY: bWluaW8xMjM=

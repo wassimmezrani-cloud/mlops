@@ -1,0 +1,233 @@
+# Q-Learning "L'Optimiseur" - Production InferenceService
+
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qlearning-placement-optimizer
+  namespace: ml-scheduler-prod
+  labels:
+    component: ml-scheduler
+    model: qlearning-optimiseur
+    version: optimized-v1.0
+  annotations:
+    serving.kserve.io/enable-metric-aggregation: "true"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+spec:
+  predictor:
+    serviceAccountName: ml-scheduler-inference
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 75
+    scaleMetric: cpu
+    pytorch:
+      runtimeVersion: "1.13.1"
+      storageUri: "s3://mlflow-bucket/models/qlearning-placement-optimizer/optimized-v1.0"
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+          nvidia.com/gpu: "0"
+        limits:
+          cpu: "4"
+          memory: 8Gi
+          nvidia.com/gpu: "1"
+      env:
+      - name: STORAGE_URI
+        value: "s3://mlflow-bucket/models/qlearning-placement-optimizer/optimized-v1.0"
+      - name: MODEL_NAME
+        value: "qlearning-placement-optimizer"
+      - name: PROTOCOL_VERSION
+        value: "v2"
+      - name: LOG_LEVEL
+        value: "INFO"
+      - name: WORKERS_PER_CORE
+        value: "1"
+      - name: TS_MODEL_STORE
+        value: "/mnt/models"
+      - name: TS_LOAD_MODELS
+        value: "qlearning-placement-optimizer.mar"
+    volumeMounts:
+    - name: model-storage
+      mountPath: /mnt/models
+      readOnly: true
+    - name: config-volume
+      mountPath: /opt/ml/config
+    volumes:
+    - name: model-storage
+      persistentVolumeClaim:
+        claimName: ml-models-storage
+    - name: config-volume
+      configMap:
+        name: qlearning-config
+
+  transformer:
+    containers:
+    - name: state-transformer
+      image: hydatis.local/ml-scheduler/qlearning-transformer:v1.0.0
+      ports:
+      - containerPort: 8080
+        protocol: TCP
+      env:
+      - name: PREDICTOR_HOST
+        value: "qlearning-placement-optimizer-predictor-default"
+      - name: PROTOCOL_VERSION
+        value: "v2"
+      - name: STATE_REPRESENTATION
+        value: "extended"  # From Katib optimization
+      - name: ACTION_SPACE_SIZE
+        value: "25"       # From Katib optimization
+      - name: EPSILON_GREEDY
+        value: "0.05"     # Production epsilon
+      - name: REWARD_FUNCTION
+        value: "composite" # From Katib optimization
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 8080
+        initialDelaySeconds: 15
+        periodSeconds: 5
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 30
+        periodSeconds: 10
+
+---
+# ConfigMap for Q-Learning model configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: qlearning-config
+  namespace: ml-scheduler-prod
+data:
+  config.properties: |
+    inference_address=http://0.0.0.0:8080
+    management_address=http://0.0.0.0:8081
+    metrics_address=http://0.0.0.0:8082
+    grpc_inference_port=7070
+    grpc_management_port=7071
+    enable_metrics_api=true
+    metrics_format=prometheus
+    number_of_netty_threads=32
+    job_queue_size=1000
+    model_store=/mnt/models
+    load_models=qlearning-placement-optimizer.mar
+  model-config.yaml: |
+    # Q-Learning DQN Model Configuration
+    model:
+      name: "qlearning-placement-optimizer"
+      version: "optimized-v1.0"
+      
+    network:
+      architecture: "DQN"
+      hidden_layers: [256, 128, 64]  # From Katib optimization
+      activation: "relu"             # From Katib optimization
+      dropout_rate: 0.15            # From Katib optimization
+      
+    training:
+      learning_rate: 0.001          # From Katib optimization
+      discount_factor: 0.95         # From Katib optimization
+      batch_size: 128               # From Katib optimization
+      replay_buffer_size: 50000     # From Katib optimization
+      
+    inference:
+      max_batch_size: 32
+      batch_delay: 50               # milliseconds
+      response_timeout: 5000        # milliseconds
+
+---
+# Service Monitor for Q-Learning metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: qlearning-optimizer-metrics
+  namespace: ml-scheduler-prod
+  labels:
+    model: qlearning-optimiseur
+spec:
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: qlearning-placement-optimizer
+  endpoints:
+  - port: http-metrics
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+  - port: http-management
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+
+---
+# HorizontalPodAutoscaler with ML-specific metrics
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: qlearning-optimizer-hpa
+  namespace: ml-scheduler-prod
+spec:
+  scaleTargetRef:
+    apiVersion: serving.kserve.io/v1beta1
+    kind: InferenceService
+    name: qlearning-placement-optimizer
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 75
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 85
+  # GPU utilization metric
+  - type: Object
+    object:
+      metric:
+        name: nvidia_gpu_utilization
+      target:
+        type: Value
+        value: "80"
+      describedObject:
+        apiVersion: serving.kserve.io/v1beta1
+        kind: InferenceService
+        name: qlearning-placement-optimizer
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 120  # Q-Learning needs more warmup time
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 600  # Keep models warm longer
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+
+---
+# PodDisruptionBudget
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: qlearning-optimizer-pdb
+  namespace: ml-scheduler-prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: qlearning-placement-optimizer

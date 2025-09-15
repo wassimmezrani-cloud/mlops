@@ -1,0 +1,212 @@
+{
+  "pipeline_id": "exec_20250906_054252",
+  "status": "FAILED",
+  "components_results": {
+    "data_collection": {
+      "component": "data_collection",
+      "status": "SUCCESS",
+      "duration_seconds": 2.059617757797241,
+      "dataset_path": "./pipeline_executions/exec_20250906_054252/raw_dataset.parquet",
+      "records_collected": 600,
+      "nodes_monitored": 6,
+      "quality_metrics": {
+        "total_records": 600,
+        "unique_nodes": 6,
+        "time_span_hours": 720,
+        "data_completeness": 1.0,
+        "collection_success": true
+      },
+      "config": {
+        "prometheus_endpoint": "http://prometheus.monitoring.svc.cluster.local:9090",
+        "collection_period_days": 30,
+        "metrics_collected": [
+          "node_cpu_seconds_total",
+          "node_memory_MemAvailable_bytes",
+          "node_load1",
+          "kube_pod_info",
+          "container_cpu_usage_seconds_total"
+        ]
+      }
+    },
+    "preprocessing": {
+      "component": "preprocessing",
+      "status": "SUCCESS",
+      "duration_seconds": 1.1590182781219482,
+      "input_records": 600,
+      "output_records": 528,
+      "train_records": 422,
+      "validation_records": 106,
+      "features_created": 12,
+      "processed_dataset_path": "./pipeline_executions/exec_20250906_054252/processed_dataset.parquet",
+      "train_dataset_path": "./pipeline_executions/exec_20250906_054252/train_dataset.parquet",
+      "validation_dataset_path": "./pipeline_executions/exec_20250906_054252/validation_dataset.parquet",
+      "feature_names": [
+        "cpu_utilization",
+        "memory_utilization",
+        "load_1min",
+        "pod_count",
+        "disk_usage_percent",
+        "hour",
+        "day_of_week",
+        "is_business_hours",
+        "resource_pressure",
+        "load_efficiency",
+        "cpu_1h_avg",
+        "memory_1h_avg"
+      ]
+    },
+    "trio_training": {
+      "component": "trio_training",
+      "status": "SUCCESS",
+      "duration_seconds": 7.019843578338623,
+      "algorithms_trained": [
+        "xgboost",
+        "qlearning",
+        "isolation"
+      ],
+      "trio_results": {
+        "xgboost": {
+          "algorithm": "XGBoost",
+          "expert_name": "Le Proph\u00e8te",
+          "cpu_r2_score": 0.9011823889005377,
+          "memory_r2_score": 0.9045973003982047,
+          "average_r2": 0.9028898446493712,
+          "business_score": 90.28898446493712,
+          "model_path": "./pipeline_executions/exec_20250906_054252/xgboost_model.pkl",
+          "training_samples": 422,
+          "validation_samples": 106
+        },
+        "qlearning": {
+          "algorithm": "Q-Learning",
+          "expert_name": "L'Optimiseur",
+          "accuracy": 0.7669242992266948,
+          "improvement_vs_random": 53.38485984533896,
+          "business_score": 100,
+          "model_path": "./pipeline_executions/exec_20250906_054252/qlearning_model.pkl",
+          "training_samples": 422,
+          "validation_samples": 106
+        },
+        "isolation": {
+          "algorithm": "Isolation Forest",
+          "expert_name": "Le D\u00e9tective",
+          "precision": 0.8622556160029816,
+          "recall": 0.8055163270676489,
+          "f1_score": 0.832920807526452,
+          "business_score": 83.2920807526452,
+          "model_path": "./pipeline_executions/exec_20250906_054252/isolation_model.pkl",
+          "training_samples": 422,
+          "validation_samples": 106
+        }
+      },
+      "average_business_score": 91.19368840586078,
+      "parallel_execution": true
+    },
+    "trio_validation": {
+      "component": "trio_validation",
+      "status": "SUCCESS",
+      "duration_seconds": 1.0217454433441162,
+      "individual_scores": {
+        "xgboost": {
+          "performance_metric": 0.9028898446493712,
+          "business_score": 90.28898446493712,
+          "meets_threshold": true
+        },
+        "qlearning": {
+          "performance_metric": 0.5338485984533896,
+          "business_score": 100,
+          "meets_threshold": true
+        },
+        "isolation": {
+          "performance_metric": 0.832920807526452,
+          "business_score": 83.2920807526452,
+          "meets_threshold": false
+        }
+      },
+      "models_meeting_threshold": 2,
+      "trio_integration_score": 100,
+      "fusion_test_samples": 50,
+      "avg_fusion_score": 0.6545009257952458,
+      "accept_rate": 0.8,
+      "go_no_go_decision": "GO",
+      "meets_performance_threshold": true,
+      "performance_thresholds": {
+        "xgboost_accuracy": 0.85,
+        "qlearning_improvement": 0.15,
+        "isolation_detection_rate": 0.85,
+        "trio_integration_score": 75.0
+      }
+    },
+    "kserve_deployment": {
+      "component": "kserve_deployment",
+      "status": "PARTIAL",
+      "duration_seconds": 4.002509355545044,
+      "services_deployed": 2,
+      "total_services": 3,
+      "deployment_success": false,
+      "all_services_healthy": true,
+      "deployment_details": {
+        "xgboost-predictor": {
+          "deployed": "True",
+          "expert_name": "Le Proph\u00e8te",
+          "port": 8080,
+          "status": "READY",
+          "deployment_time": "2025-09-06T05:43:04.644333"
+        },
+        "qlearning-optimizer": {
+          "deployed": "True",
+          "expert_name": "L'Optimiseur",
+          "port": 8081,
+          "status": "READY",
+          "deployment_time": "2025-09-06T05:43:05.644823"
+        },
+        "isolation-detector": {
+          "deployed": "False",
+          "expert_name": "Le D\u00e9tective",
+          "port": 8082,
+          "status": "FAILED",
+          "deployment_time": "2025-09-06T05:43:06.645256"
+        }
+      },
+      "service_endpoints": {
+        "xgboost-predictor": {
+          "url": "http://xgboost-predictor.ml-scheduler.svc.cluster.local",
+          "port": 8080,
+          "health_endpoint": "/v1/models/xgboost-predictor",
+          "predict_endpoint": "/v1/models/xgboost-predictor:predict"
+        },
+        "qlearning-optimizer": {
+          "url": "http://qlearning-optimizer.ml-scheduler.svc.cluster.local",
+          "port": 8081,
+          "health_endpoint": "/v1/models/qlearning-optimizer",
+          "predict_endpoint": "/v1/models/qlearning-optimizer:predict"
+        }
+      },
+      "health_results": {
+        "xgboost-predictor": {
+          "healthy": "True",
+          "response_time_ms": 53,
+          "check_time": "2025-09-06T05:43:07.645743"
+        },
+        "qlearning-optimizer": {
+          "healthy": "True",
+          "response_time_ms": 50,
+          "check_time": "2025-09-06T05:43:07.645907"
+        }
+      },
+      "namespace": "ml-scheduler"
+    }
+  },
+  "performance_metrics": {
+    "pipeline_duration_minutes": 0.2545938611030579,
+    "average_component_duration": 3.0525468826293944,
+    "trio_business_score": 91.19368840586078,
+    "integration_score": 100,
+    "deployment_success": false
+  },
+  "errors": [],
+  "total_duration_seconds": 15.275631666183472,
+  "successful_components": 4,
+  "total_components": 5,
+  "success_rate": 0.8,
+  "end_time": "2025-09-06T05:43:07.646297"
+}

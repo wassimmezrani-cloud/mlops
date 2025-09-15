@@ -1,0 +1,142 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ml-scheduler-services-monitor
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: monitoring
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: "xgboost-load-predictor"
+  endpoints:
+  - port: http-userport
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: "(.*)"
+      targetLabel: service_type
+      replacement: "xgboost-predictor"
+  - port: http-userport
+    path: /stats/prometheus
+    interval: 15s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: "(.*)"
+      targetLabel: service_type
+      replacement: "xgboost-predictor"
+  namespaceSelector:
+    matchNames:
+    - ml-scheduler
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: qlearning-optimizer-monitor
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: monitoring
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: "qlearning-placement-optimizer"
+  endpoints:
+  - port: http-userport
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: "(.*)"
+      targetLabel: service_type
+      replacement: "qlearning-optimizer"
+  - port: http-userport
+    path: /stats/prometheus
+    interval: 15s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: "(.*)"
+      targetLabel: service_type
+      replacement: "qlearning-optimizer"
+  namespaceSelector:
+    matchNames:
+    - ml-scheduler
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: isolation-detector-monitor
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: monitoring
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: "isolation-anomaly-detector"
+  endpoints:
+  - port: http-userport
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: "(.*)"
+      targetLabel: service_type
+      replacement: "isolation-detector"
+  - port: http-userport
+    path: /stats/prometheus
+    interval: 15s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: "(.*)"
+      targetLabel: service_type
+      replacement: "isolation-detector"
+  namespaceSelector:
+    matchNames:
+    - ml-scheduler
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: istio-proxy-ml-scheduler-monitor
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: ml-scheduler
+  endpoints:
+  - port: http-monitoring
+    path: /stats/prometheus
+    interval: 15s
+    scrapeTimeout: 10s
+    relabelings:
+    - sourceLabels: [__meta_kubernetes_pod_name]
+      targetLabel: pod_name
+    - sourceLabels: [__meta_kubernetes_pod_container_name]
+      targetLabel: container_name
+    metricRelabelings:
+    - sourceLabels: [__name__]
+      regex: "istio_request_duration_milliseconds.*"
+      targetLabel: __tmp_istio_request_duration
+      replacement: "true"
+    - sourceLabels: [__name__]
+      regex: "istio_requests_total.*"
+      targetLabel: __tmp_istio_requests
+      replacement: "true"
+  namespaceSelector:
+    matchNames:
+    - ml-scheduler

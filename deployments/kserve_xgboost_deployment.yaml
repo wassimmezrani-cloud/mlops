@@ -1,0 +1,126 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: xgboost-load-predictor
+  namespace: kubeflow
+  labels:
+    app: ml-scheduler
+    component: xgboost-predictor
+    expert: le-prophete
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 5
+    scaleTarget: 80
+    scaleMetric: concurrency
+    containerConcurrency: 10
+    timeout: 60
+    canaryTrafficPercent: 0
+    sklearn:
+      storageUri: "pvc://xgboost-models/models/xgboost_predictor"
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: 2
+          memory: 4Gi
+      env:
+        - name: PYTHONPATH
+          value: "/opt/mlflow/artifacts"
+        - name: KSERVE_LOGLEVEL
+          value: "INFO"
+        - name: MODEL_NAME
+          value: "xgboost-load-predictor"
+    serviceAccountName: kserve-models-web-app
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: xgboost-models
+  namespace: kubeflow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: longhorn
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: xgboost-predictor-api
+  namespace: kubeflow
+  labels:
+    app: ml-scheduler
+    component: xgboost-predictor
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    serving.kserve.io/inferenceservice: xgboost-load-predictor
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: xgboost-predictor-ingress
+  namespace: kubeflow
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  rules:
+  - host: ml-scheduler.local
+    http:
+      paths:
+      - path: /xgboost(/|$)(.*)
+        pathType: Prefix
+        backend:
+          service:
+            name: xgboost-predictor-api
+            port:
+              number: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: xgboost-predictor-config
+  namespace: kubeflow
+data:
+  model_config.json: |
+    {
+      "model_name": "xgboost-load-predictor",
+      "model_type": "XGBoost Regressor",
+      "version": "1.0.0",
+      "horizons": ["30min", "1h", "2h"],
+      "metrics": ["cpu", "memory"],
+      "features_count": 28,
+      "performance_targets": {
+        "latency_ms": 50,
+        "availability": 0.999,
+        "accuracy": 0.75
+      }
+    }
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: xgboost-predictor-monitor
+  namespace: kubeflow
+  labels:
+    app: ml-scheduler
+    component: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: ml-scheduler
+      component: xgboost-predictor
+  endpoints:
+  - port: http
+    interval: 30s
+    path: /metrics

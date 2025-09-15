@@ -1,0 +1,144 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-models-storage
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: model-storage
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 20Gi
+  selector:
+    matchLabels:
+      type: ml-models
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-cache-storage
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: model-cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn-fast
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      type: ml-cache
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-cache-config
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: cache-configuration
+data:
+  cache.conf: |
+    # Model Cache Configuration for ML-Scheduler
+    
+    # XGBoost Cache Configuration
+    [xgboost]
+    cache_size = 1GB
+    ttl = 3600
+    warmup_enabled = true
+    warmup_models = xgboost_load_predictor:v1.0.0
+    preload_features = true
+    
+    # Q-Learning Cache Configuration
+    [qlearning]
+    cache_size = 512MB
+    ttl = 1800
+    warmup_enabled = true
+    warmup_models = qlearning_placement_optimizer:v1.0.0
+    q_table_cache = true
+    
+    # Isolation Forest Cache Configuration
+    [isolation]
+    cache_size = 256MB
+    ttl = 1800
+    warmup_enabled = true
+    warmup_models = isolation_anomaly_detector:v1.0.0
+    feature_cache = true
+    
+    # Global Cache Settings
+    [global]
+    cache_cleanup_interval = 300
+    memory_threshold = 0.85
+    disk_threshold = 0.90
+    metrics_enabled = true
+    health_check_interval = 60
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: model-fallback-config
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: fallback-configuration
+data:
+  fallback.yaml: |
+    # Fallback Configuration for ML-Scheduler Services
+    
+    # Service Health Check Configuration
+    health_checks:
+      xgboost_predictor:
+        endpoint: "/v1/models/xgboost-load-predictor"
+        timeout: 5s
+        interval: 10s
+        failure_threshold: 3
+        fallback_strategy: "cached_prediction"
+        
+      qlearning_optimizer:
+        endpoint: "/v1/models/qlearning-placement-optimizer"  
+        timeout: 8s
+        interval: 15s
+        failure_threshold: 3
+        fallback_strategy: "default_placement"
+        
+      isolation_detector:
+        endpoint: "/v1/models/isolation-anomaly-detector"
+        timeout: 5s
+        interval: 10s
+        failure_threshold: 3
+        fallback_strategy: "skip_anomaly_check"
+    
+    # Fallback Strategies
+    fallback_strategies:
+      cached_prediction:
+        description: "Use last successful prediction from cache"
+        cache_ttl: 300s
+        max_cache_age: 1800s
+        
+      default_placement:
+        description: "Use default Kubernetes scheduler logic"
+        policy: "resource_based"
+        resource_weights:
+          cpu: 0.6
+          memory: 0.4
+          
+      skip_anomaly_check:
+        description: "Skip anomaly detection and proceed with placement"
+        allow_placement: true
+        log_decision: true
+    
+    # Circuit Breaker Configuration
+    circuit_breaker:
+      failure_rate_threshold: 50
+      minimum_throughput: 10
+      wait_duration_in_open_state: 30s
+      permitted_calls_in_half_open_state: 5
+      sliding_window_size: 100
+      sliding_window_type: "COUNT_BASED"

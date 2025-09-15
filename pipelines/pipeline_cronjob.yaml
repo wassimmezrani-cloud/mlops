@@ -1,0 +1,23 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ml-scheduler-pipeline-weekly
+  namespace: kubeflow
+spec:
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - command:
+            - python
+            - /app/trigger_pipeline.py
+            env:
+            - name: KUBEFLOW_ENDPOINT
+              value: http://ml-pipeline.kubeflow.svc.cluster.local:8888
+            - name: PIPELINE_ID
+              value: ml-scheduler-training-pipeline
+            image: ml-scheduler/pipeline-trigger:latest
+            name: pipeline-trigger
+          restartPolicy: OnFailure
+  schedule: 0 2 * * 0

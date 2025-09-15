@@ -1,0 +1,169 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ml-scheduler
+  labels:
+    name: ml-scheduler
+    istio-injection: enabled
+    serving.kserve.io/inferenceservice: enabled
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kserve-sa
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: kserve-runtime
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kserve-ml-scheduler-role
+  labels:
+    app: ml-scheduler
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints", "persistentvolumeclaims", "events", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["apps"]
+  resources: ["deployments", "replicasets"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["serving.kserve.io"]
+  resources: ["inferenceservices", "inferenceservices/status"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["networking.istio.io"]
+  resources: ["virtualservices", "destinationrules", "gateways"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
+- apiGroups: ["metrics.k8s.io"]
+  resources: ["pods", "nodes"]
+  verbs: ["get", "list"]
+- apiGroups: ["custom.metrics.k8s.io"]
+  resources: ["*"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kserve-ml-scheduler-binding
+  labels:
+    app: ml-scheduler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kserve-ml-scheduler-role
+subjects:
+- kind: ServiceAccount
+  name: kserve-sa
+  namespace: ml-scheduler
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ml-models-storage-secret
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: storage
+type: Opaque
+data:
+  gcs-credentials.json: ""  # Base64 encoded GCS credentials
+stringData:
+  GOOGLE_APPLICATION_CREDENTIALS: /var/secrets/gcs/gcs-credentials.json
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-scheduler-config
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: configuration
+data:
+  # XGBoost Configuration
+  xgboost.config.json: |
+    {
+      "model_name": "xgboost_load_predictor",
+      "model_version": "v1.0.0",
+      "prediction_horizons": ["30m", "1h", "2h"],
+      "features": [
+        "cpu_usage_rate", "memory_usage_rate", "network_io", "disk_io",
+        "hour_of_day", "day_of_week", "business_hours", "cpu_pressure",
+        "memory_pressure", "efficiency_ratio", "load_trend_1h",
+        "resource_volatility"
+      ],
+      "target_metrics": ["cpu_usage_1h", "memory_usage_1h"],
+      "performance_thresholds": {
+        "accuracy_threshold": 0.85,
+        "latency_threshold_ms": 75,
+        "throughput_threshold_rps": 500
+      }
+    }
+  
+  # Q-Learning Configuration  
+  qlearning.config.json: |
+    {
+      "model_name": "qlearning_placement_optimizer",
+      "model_version": "v1.0.0",
+      "action_space": ["schedule", "pending", "reject"],
+      "state_features": [
+        "node_cpu_available", "node_memory_available", "node_load_score",
+        "pod_cpu_request", "pod_memory_request", "pod_priority",
+        "cluster_fragmentation", "node_affinity_score"
+      ],
+      "q_learning_params": {
+        "learning_rate": 0.1,
+        "discount_factor": 0.95,
+        "exploration_rate": 0.05,
+        "q_table_size": 10000
+      },
+      "performance_thresholds": {
+        "efficiency_threshold": 0.15,
+        "latency_threshold_ms": 100,
+        "throughput_threshold_rps": 300
+      }
+    }
+  
+  # Isolation Forest Configuration
+  isolation.config.json: |
+    {
+      "model_name": "isolation_anomaly_detector", 
+      "model_version": "v1.0.0",
+      "detection_features": [
+        "cpu_usage_rate", "memory_usage_rate", "network_io", "disk_io",
+        "cpu_pressure", "memory_pressure", "load_average", "context_switches",
+        "interrupt_rate", "swap_usage", "disk_utilization", "network_errors"
+      ],
+      "isolation_params": {
+        "n_estimators": 100,
+        "max_samples": 256,
+        "contamination": 0.1,
+        "max_features": 1.0,
+        "bootstrap": false
+      },
+      "performance_thresholds": {
+        "precision_threshold": 0.85,
+        "latency_threshold_ms": 50, 
+        "throughput_threshold_rps": 200
+      }
+    }
+  
+  # Service Mesh Configuration
+  service_mesh.config.yaml: |
+    mesh_config:
+      default_config:
+        proxy_statistics_matcher:
+          inclusion_regexps:
+          - ".*outlier_detection.*"
+          - ".*circuit_breaker.*"
+          - ".*upstream_rq_retry.*"
+          - ".*_cx_.*"
+      extension_providers:
+      - name: prometheus
+        prometheus:
+          configOverride:
+            metric_relabeling_configs:
+            - source_labels: [__name__]
+              regex: ".*ml_scheduler.*"
+              target_label: service_type
+              replacement: ml_scheduler

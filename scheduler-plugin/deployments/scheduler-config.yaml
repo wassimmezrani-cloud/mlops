@@ -1,0 +1,86 @@
+apiVersion: kubescheduler.config.k8s.io/v1beta3
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: ml-scheduler
+  plugins:
+    score:
+      enabled:
+      - name: MLScheduler
+        weight: 100
+      disabled:
+      - name: NodeResourcesFit
+  pluginConfig:
+  - name: MLScheduler
+    args:
+      # Plugin configuration
+      pluginName: MLScheduler
+      pluginWeight: 100
+      enableProfile: false
+      
+      # ML Service endpoints (production KServe services)
+      xgboostEndpoint: "https://xgboost.ml-scheduler.hydatis.local/v1/models/xgboost-load-predictor:predict"
+      qlearningEndpoint: "https://qlearning.ml-scheduler.hydatis.local/v1/models/qlearning-placement-optimizer:predict"
+      isolationEndpoint: "https://isolation.ml-scheduler.hydatis.local/v1/models/isolation-anomaly-detector:predict"
+      
+      # HTTP client configuration
+      httpTimeout: 30s
+      maxRetries: 3
+      retryDelay: 100ms
+      connectionTimeout: 10s
+      maxIdleConns: 100
+      maxIdleConnsHost: 10
+      
+      # Circuit breaker configuration
+      circuitBreaker:
+        maxRequests: 10
+        interval: 30s
+        timeout: 60s
+        failureThreshold: 5
+        successThreshold: 3
+        onStateChange: true
+      
+      # Decision fusion configuration
+      fusionWeights:
+        xgboostWeight: 0.4
+        qlearningWeight: 0.4
+        isolationWeight: 0.2
+        normalizeWeights: true
+      
+      confidenceThresholds:
+        xgboost: 0.75
+        qlearning: 0.6
+        isolation: 0.8
+      
+      fallbackPolicy:
+        enableFallback: true
+        fallbackTimeout: 5s
+        minServicesRequired: 1
+        useKubernetesDefault: true
+        cacheLastDecisions: true
+        cacheTTL: 5m
+      
+      # Performance configuration
+      metricsEnabled: true
+      metricsPort: 8080
+      healthCheckPort: 8081
+      decisionTimeout: 200ms
+      concurrentRequests: 100
+      
+      # Business logic configuration
+      resourceOptimizationWeight: 0.3
+      loadBalancingWeight: 0.3
+      anomalyAvoidanceWeight: 0.4
+      performancePenaltyFactor: 0.1
+      
+      # Logging and debugging
+      logLevel: "info"
+      enableTracing: true
+      tracingEndpoint: "http://jaeger-collector.monitoring.svc.cluster.local:14268/api/traces"
+
+leaderElection:
+  leaderElect: true
+  resourceNamespace: kube-system
+  resourceName: ml-scheduler
+
+healthzBindAddress: 0.0.0.0:10259
+metricsBindAddress: 0.0.0.0:10259

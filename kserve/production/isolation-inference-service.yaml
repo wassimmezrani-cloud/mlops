@@ -1,0 +1,105 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: isolation-anomaly-detector
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: isolation-detector
+    expert: le-detective
+    version: v1.0.0
+  annotations:
+    serving.kserve.io/deploymentMode: Serverless
+    autoscaling.knative.dev/target: "40"
+    autoscaling.knative.dev/window: "60s"
+spec:
+  predictor:
+    serviceAccountName: kserve-sa
+    minReplicas: 1
+    maxReplicas: 2
+    scaleTarget: 40
+    scaleMetric: concurrency
+    containerConcurrency: 8
+    timeout: 20
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+        nvidia.com/gpu: "0"
+      limits:
+        cpu: 300m
+        memory: 512Mi
+        nvidia.com/gpu: "0"
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - ml-scheduler
+              - key: component
+                operator: In
+                values:
+                - isolation-detector
+            topologyKey: kubernetes.io/hostname
+    nodeSelector:
+      node-type: compute-optimized
+    tolerations:
+    - key: "ml-workload"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+    sklearn:
+      modelUri: "gs://ml-scheduler-models/isolation/v1.0.0/"
+      runtimeVersion: "1.10.0"
+      env:
+      - name: STORAGE_URI
+        value: "gs://ml-scheduler-models/isolation/v1.0.0/"
+      - name: MODEL_NAME
+        value: "isolation_anomaly_detector"
+      - name: SERVICE_TYPE
+        value: "anomaly-detection"
+      - name: EXPERT_NAME
+        value: "Le Detective"
+      - name: DETECTION_METHOD
+        value: "isolation-forest"
+      - name: CONTAMINATION_RATE
+        value: "0.1"
+      - name: N_ESTIMATORS
+        value: "100"
+      - name: MAX_SAMPLES
+        value: "256"
+      - name: ANOMALY_THRESHOLD
+        value: "0.05"
+      - name: METRICS_ENDPOINT
+        value: "/metrics"
+      - name: HEALTH_ENDPOINT
+        value: "/health"
+    readinessProbe:
+      httpGet:
+        path: /v1/models/isolation-anomaly-detector
+        port: 8080
+      initialDelaySeconds: 20
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+    livenessProbe:
+      httpGet:
+        path: /v1/models/isolation-anomaly-detector
+        port: 8080
+      initialDelaySeconds: 40
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 3
+  canaryTrafficPercent: 5
+  annotations:
+    autoscaling.knative.dev/class: "hpa.autoscaling.knative.dev"
+    autoscaling.knative.dev/metric: "cpu"
+    autoscaling.knative.dev/targetUtilizationPercentage: "50"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    serving.kserve.io/enable-metric-aggregation: "true"

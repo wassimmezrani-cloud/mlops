@@ -1,0 +1,50 @@
+event_triggers:
+  data_threshold_trigger:
+    condition: new_data_samples > 10000
+    cooldown_hours: 24
+    description: Trigger when significant new data available
+    enabled: true
+  incident_trigger:
+    condition: cluster_incidents > 5
+    cooldown_hours: 12
+    description: Trigger after cluster incidents spike
+    enabled: true
+  performance_degradation_trigger:
+    condition: model_accuracy < 0.8
+    cooldown_hours: 6
+    description: Trigger on model performance degradation
+    enabled: true
+manual_triggers:
+  admin_trigger:
+    approval_required: true
+    description: Manual admin-triggered training
+    enabled: true
+    roles:
+    - ml-engineer
+    - platform-admin
+  emergency_retrain:
+    approval_required: false
+    description: Emergency retraining for incidents
+    enabled: true
+    roles:
+    - platform-admin
+    - sre-oncall
+resource_scheduling:
+  preemption_policy: PreemptLowerPriority
+  preferred_node_selector:
+    instance-type: compute-optimized
+    workload-type: ml-training
+  priority_class: ml-scheduler-training
+  resource_limits:
+    max_cpu_cores: 32
+    max_memory_gb: 128
+    max_parallel_pipelines: 2
+weekly_retraining:
+  description: Weekly complete trio re-training
+  enabled: true
+  max_duration_hours: 4
+  retry_policy:
+    max_retries: 2
+    retry_delay_minutes: 30
+  schedule: 0 2 * * 0
+  timezone: UTC

@@ -1,0 +1,168 @@
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: ml-scheduler-gateway
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: gateway
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "ml-scheduler.hydatis.local"
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: ml-scheduler-tls-cert
+    hosts:
+    - "ml-scheduler.hydatis.local"
+  - port:
+      number: 8081
+      name: xgboost-api
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: xgboost-tls-cert
+    hosts:
+    - "xgboost.ml-scheduler.hydatis.local"
+  - port:
+      number: 8082
+      name: qlearning-api
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: qlearning-tls-cert
+    hosts:
+    - "qlearning.ml-scheduler.hydatis.local"
+  - port:
+      number: 8083
+      name: isolation-api
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: isolation-tls-cert
+    hosts:
+    - "isolation.ml-scheduler.hydatis.local"
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ml-scheduler-vs
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: virtual-service
+spec:
+  hosts:
+  - "ml-scheduler.hydatis.local"
+  - "xgboost.ml-scheduler.hydatis.local"
+  - "qlearning.ml-scheduler.hydatis.local"
+  - "isolation.ml-scheduler.hydatis.local"
+  gateways:
+  - ml-scheduler-gateway
+  http:
+  - match:
+    - uri:
+        prefix: "/xgboost/"
+    - headers:
+        host:
+          exact: "xgboost.ml-scheduler.hydatis.local"
+    rewrite:
+      uri: "/"
+    route:
+    - destination:
+        host: xgboost-load-predictor-predictor-default.ml-scheduler.svc.cluster.local
+        port:
+          number: 80
+      weight: 90
+    - destination:
+        host: xgboost-load-predictor-predictor-canary.ml-scheduler.svc.cluster.local
+        port:
+          number: 80
+      weight: 10
+    timeout: 30s
+    retries:
+      attempts: 3
+      perTryTimeout: 10s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+      retryRemoteLocalities: true
+    fault:
+      delay:
+        percentage:
+          value: 0.001
+        fixedDelay: 5s
+  - match:
+    - uri:
+        prefix: "/qlearning/"
+    - headers:
+        host:
+          exact: "qlearning.ml-scheduler.hydatis.local"
+    rewrite:
+      uri: "/"
+    route:
+    - destination:
+        host: qlearning-placement-optimizer-predictor-default.ml-scheduler.svc.cluster.local
+        port:
+          number: 80
+      weight: 85
+    - destination:
+        host: qlearning-placement-optimizer-predictor-canary.ml-scheduler.svc.cluster.local
+        port:
+          number: 80
+      weight: 15
+    timeout: 45s
+    retries:
+      attempts: 2
+      perTryTimeout: 15s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+  - match:
+    - uri:
+        prefix: "/isolation/"
+    - headers:
+        host:
+          exact: "isolation.ml-scheduler.hydatis.local"
+    rewrite:
+      uri: "/"
+    route:
+    - destination:
+        host: isolation-anomaly-detector-predictor-default.ml-scheduler.svc.cluster.local
+        port:
+          number: 80
+      weight: 95
+    - destination:
+        host: isolation-anomaly-detector-predictor-canary.ml-scheduler.svc.cluster.local
+        port:
+          number: 80
+      weight: 5
+    timeout: 20s
+    retries:
+      attempts: 3
+      perTryTimeout: 7s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+  - match:
+    - uri:
+        prefix: "/health"
+    route:
+    - destination:
+        host: ml-scheduler-health-service.ml-scheduler.svc.cluster.local
+        port:
+          number: 8080
+  - match:
+    - uri:
+        prefix: "/metrics"
+    route:
+    - destination:
+        host: ml-scheduler-metrics-service.ml-scheduler.svc.cluster.local
+        port:
+          number: 9090

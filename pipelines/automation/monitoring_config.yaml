@@ -1,0 +1,61 @@
+data_quality_metrics:
+  data_completeness:
+    alert_threshold: 0.95
+    description: Data completeness percentage
+    metric_name: ml_scheduler_data_completeness
+  data_freshness:
+    alert_threshold: 25
+    description: Data freshness in hours
+    metric_name: ml_scheduler_data_freshness_hours
+  feature_drift:
+    alert_threshold: 0.7
+    description: Feature drift detection score
+    metric_name: ml_scheduler_feature_drift_score
+pipeline_metrics:
+  component_duration:
+    alert_thresholds:
+      data_collection: 1800
+      deployment: 600
+      preprocessing: 1200
+      trio_training: 2700
+      validation: 900
+    description: Individual component duration
+    labels:
+    - component_name
+    - status
+    metric_name: ml_scheduler_component_duration_seconds
+  execution_duration:
+    alert_threshold: 7200
+    description: Pipeline execution duration
+    labels:
+    - pipeline_name
+    - status
+    metric_name: ml_scheduler_pipeline_duration_seconds
+  model_performance:
+    alert_thresholds:
+      isolation_f1: 0.85
+      qlearning_improvement: 0.15
+      trio_integration_score: 75.0
+      xgboost_r2: 0.85
+    description: Model performance scores
+    labels:
+    - algorithm
+    - metric_type
+    metric_name: ml_scheduler_model_performance
+  pipeline_success_rate:
+    alert_threshold: 0.8
+    description: Pipeline success rate percentage
+    metric_name: ml_scheduler_pipeline_success_rate
+resource_metrics:
+  cpu_utilization:
+    alert_threshold: 0.9
+    description: Pipeline CPU utilization
+    metric_name: ml_scheduler_pipeline_cpu_usage
+  memory_utilization:
+    alert_threshold: 0.85
+    description: Pipeline memory utilization
+    metric_name: ml_scheduler_pipeline_memory_usage
+  storage_usage:
+    alert_threshold: 0.8
+    description: Pipeline storage usage
+    metric_name: ml_scheduler_pipeline_storage_usage

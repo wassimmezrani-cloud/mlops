@@ -1,0 +1,63 @@
+# Test InferenceServices for ML-Scheduler Production
+
+# XGBoost Load Predictor
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: xgboost-load-predictor
+  namespace: ml-scheduler-prod
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 2
+    xgboost:
+      storageUri: "gs://kfserving-examples/models/xgboost/iris"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: 500m
+          memory: 2Gi
+
+---
+# Scikit-learn Isolation Forest (using XGBoost model for testing)
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: isolation-anomaly-detector
+  namespace: ml-scheduler-prod
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 2
+    sklearn:
+      storageUri: "gs://kfserving-examples/models/sklearn/1.0/model"
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: 1
+          memory: 2Gi
+
+---
+# PyTorch Q-Learning (using XGBoost model for testing - all use same working model)
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qlearning-placement-optimizer
+  namespace: ml-scheduler-prod
+spec:
+  predictor:
+    minReplicas: 1
+    maxReplicas: 1
+    xgboost:
+      storageUri: "gs://kfserving-examples/models/xgboost/iris"
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: 1
+          memory: 2Gi

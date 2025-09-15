@@ -1,0 +1,259 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ml-scheduler-network-policy
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: network-security
+spec:
+  podSelector:
+    matchLabels:
+      app: ml-scheduler
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from Istio ingress gateway
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - podSelector:
+        matchLabels:
+          app: istio-proxy
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 8443
+  # Allow traffic from same namespace (inter-service communication)
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ml-scheduler
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 15090
+  # Allow traffic from kube-system for health checks
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: TCP
+      port: 8080
+    - protocol: TCP
+      port: 15020
+  # Allow traffic from monitoring namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 15090
+  egress:
+  # Allow DNS resolution
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+  # Allow HTTPS to external model storage
+  - to: []
+    ports:
+    - protocol: TCP
+      port: 443
+  # Allow communication with Kubernetes API
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: TCP
+      port: 443
+    - protocol: TCP
+      port: 6443
+  # Allow communication with Istio control plane
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    ports:
+    - protocol: TCP
+      port: 15010
+    - protocol: TCP
+      port: 15011
+    - protocol: TCP
+      port: 15012
+  # Allow communication within same namespace
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: ml-scheduler
+  # Allow communication with monitoring services
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+    ports:
+    - protocol: TCP
+      port: 9090
+    - protocol: TCP
+      port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: deny-all-default
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: network-security
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+  - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: xgboost-predictor-policy
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: xgboost-predictor
+spec:
+  podSelector:
+    matchLabels:
+      component: xgboost-predictor
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  # Allow traffic from gateway and other ML services
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: ml-scheduler
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+  egress:
+  # Allow standard egress rules
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+    - protocol: TCP
+      port: 443
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: qlearning-optimizer-policy
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: qlearning-optimizer
+spec:
+  podSelector:
+    matchLabels:
+      component: qlearning-optimizer
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: ml-scheduler
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+  egress:
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+    - protocol: TCP
+      port: 443
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: isolation-detector-policy
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: isolation-detector
+spec:
+  podSelector:
+    matchLabels:
+      component: isolation-detector
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+    - namespaceSelector:
+        matchLabels:
+          name: ml-scheduler
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+  egress:
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
+    - protocol: TCP
+      port: 443
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: istio-system
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring

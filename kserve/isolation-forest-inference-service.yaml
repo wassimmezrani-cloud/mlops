@@ -1,0 +1,313 @@
+# Isolation Forest "Le Détective" - Production InferenceService
+
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: isolation-anomaly-detector
+  namespace: ml-scheduler-prod
+  labels:
+    component: ml-scheduler
+    model: isolation-detective
+    version: optimized-v1.0
+  annotations:
+    serving.kserve.io/enable-metric-aggregation: "true"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+spec:
+  predictor:
+    serviceAccountName: ml-scheduler-inference
+    minReplicas: 1
+    maxReplicas: 2
+    scaleTarget: 60
+    scaleMetric: cpu
+    sklearn:
+      runtimeVersion: "1.3.0"
+      storageUri: "s3://mlflow-bucket/models/isolation-anomaly-detector/optimized-v1.0"
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      env:
+      - name: STORAGE_URI
+        value: "s3://mlflow-bucket/models/isolation-anomaly-detector/optimized-v1.0"
+      - name: MODEL_NAME
+        value: "isolation-anomaly-detector"
+      - name: PROTOCOL_VERSION
+        value: "v2"
+      - name: LOG_LEVEL
+        value: "INFO"
+      - name: WORKERS_PER_CORE
+        value: "4"
+      # Isolation Forest specific parameters from Katib optimization
+      - name: N_ESTIMATORS
+        value: "150"      # From Katib optimization
+      - name: MAX_SAMPLES
+        value: "0.8"      # From Katib optimization  
+      - name: CONTAMINATION
+        value: "0.1"      # From Katib optimization
+      - name: ANOMALY_THRESHOLD_METHOD
+        value: "percentile" # From Katib optimization
+      - name: ANOMALY_PERCENTILE
+        value: "0.15"     # From Katib optimization
+    volumeMounts:
+    - name: model-storage
+      mountPath: /mnt/models
+      readOnly: true
+    - name: config-volume
+      mountPath: /opt/ml/config
+    volumes:
+    - name: model-storage
+      persistentVolumeClaim:
+        claimName: ml-models-storage
+    - name: config-volume
+      configMap:
+        name: isolation-forest-config
+
+  transformer:
+    containers:
+    - name: metrics-transformer
+      image: hydatis.local/ml-scheduler/isolation-transformer:v1.0.0
+      ports:
+      - containerPort: 8080
+        protocol: TCP
+      env:
+      - name: PREDICTOR_HOST
+        value: "isolation-anomaly-detector-predictor-default"
+      - name: PROTOCOL_VERSION
+        value: "v2"
+      - name: FEATURE_SCALING
+        value: "robust"       # From Katib optimization
+      - name: TIME_WINDOW_MINUTES
+        value: "15"          # From Katib optimization
+      - name: AGGREGATION_METHOD
+        value: "percentile_95" # From Katib optimization
+      - name: BATCH_PROCESSING_SIZE
+        value: "500"         # From Katib optimization
+      - name: PROCESSING_FREQUENCY_SECONDS
+        value: "60"          # From Katib optimization
+      - name: PROMETHEUS_URL
+        value: "http://prometheus-server.monitoring.svc.cluster.local:9090"
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 8080
+        initialDelaySeconds: 10
+        periodSeconds: 5
+      livenessProbe:
+        httpGet:
+          path: /health
+          port: 8080
+        initialDelaySeconds: 20
+        periodSeconds: 10
+
+---
+# ConfigMap for Isolation Forest configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: isolation-forest-config
+  namespace: ml-scheduler-prod
+data:
+  config.yaml: |
+    # Isolation Forest Model Configuration
+    model:
+      name: "isolation-anomaly-detector"
+      version: "optimized-v1.0"
+      type: "isolation_forest"
+      
+    parameters:
+      n_estimators: 150         # From Katib optimization
+      max_samples: 0.8          # From Katib optimization
+      contamination: 0.1        # From Katib optimization
+      max_features: 1.0         # From Katib optimization
+      bootstrap: false          # From Katib optimization
+      random_state: 42
+      
+    preprocessing:
+      feature_scaling: "robust"      # From Katib optimization
+      outlier_removal_threshold: 3.0 # From Katib optimization
+      missing_value_strategy: "median" # From Katib optimization
+      
+    features:
+      metrics:
+        - "cpu_usage_rate"
+        - "memory_usage_rate"
+        - "disk_io_rate"
+        - "network_io_rate"
+        - "load_average"
+        - "cpu_pressure"
+        - "memory_pressure"
+        - "context_switches"
+        - "interrupt_rate"
+        - "swap_usage"
+        - "disk_utilization"
+        - "network_errors"
+      time_window_minutes: 15    # From Katib optimization
+      aggregation_method: "percentile_95" # From Katib optimization
+      
+    anomaly_detection:
+      threshold_method: "percentile"    # From Katib optimization
+      anomaly_percentile: 0.15          # From Katib optimization
+      confidence_threshold: 0.8
+      
+    inference:
+      batch_size: 500                   # From Katib optimization
+      max_batch_delay_ms: 100
+      response_timeout_ms: 2000
+      
+  prometheus-queries.yaml: |
+    # Prometheus queries for node metrics collection
+    queries:
+      cpu_usage_rate: 'rate(node_cpu_seconds_total[5m])'
+      memory_usage_rate: 'node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes'
+      disk_io_rate: 'rate(node_disk_io_time_seconds_total[5m])'
+      network_io_rate: 'rate(node_network_transmit_bytes_total[5m]) + rate(node_network_receive_bytes_total[5m])'
+      load_average: 'node_load1'
+      cpu_pressure: 'node_pressure_cpu_waiting_seconds_total'
+      memory_pressure: 'node_pressure_memory_waiting_seconds_total'
+      context_switches: 'rate(node_context_switches_total[5m])'
+      interrupt_rate: 'rate(node_intr_total[5m])'
+      swap_usage: 'node_memory_SwapTotal_bytes - node_memory_SwapFree_bytes'
+      disk_utilization: 'node_filesystem_avail_bytes / node_filesystem_size_bytes'
+      network_errors: 'rate(node_network_transmit_errs_total[5m]) + rate(node_network_receive_errs_total[5m])'
+
+---
+# Service Monitor for Isolation Forest metrics
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: isolation-detector-metrics
+  namespace: ml-scheduler-prod
+  labels:
+    model: isolation-detective
+spec:
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: isolation-anomaly-detector
+  endpoints:
+  - port: http-metrics
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+  - port: http-metrics
+    path: /v2/health
+    interval: 30s
+    scrapeTimeout: 5s
+
+---
+# HorizontalPodAutoscaler optimized for anomaly detection
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: isolation-detector-hpa
+  namespace: ml-scheduler-prod
+spec:
+  scaleTargetRef:
+    apiVersion: serving.kserve.io/v1beta1
+    kind: InferenceService
+    name: isolation-anomaly-detector
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 60
+  - type: Resource
+    resource:
+      name: memory  
+      target:
+        type: Utilization
+        averageUtilization: 75
+  # Custom metric for anomaly detection load
+  - type: Object
+    object:
+      metric:
+        name: anomaly_detection_requests_per_second
+      target:
+        type: Value
+        value: "100"
+      describedObject:
+        apiVersion: serving.kserve.io/v1beta1
+        kind: InferenceService
+        name: isolation-anomaly-detector
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 180
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+
+---
+# PodDisruptionBudget for availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: isolation-detector-pdb
+  namespace: ml-scheduler-prod
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      serving.kserve.io/inferenceservice: isolation-anomaly-detector
+
+---
+# CronJob for periodic anomaly threshold calibration
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: anomaly-threshold-calibration
+  namespace: ml-scheduler-prod
+spec:
+  schedule: "0 2 * * *"  # Daily at 2 AM
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: threshold-calibrator
+            image: hydatis.local/ml-scheduler/threshold-calibrator:v1.0.0
+            command:
+            - python3
+            - /app/calibrate_thresholds.py
+            args:
+            - --isolation-service-url=http://isolation-anomaly-detector.ml-scheduler-prod.svc.cluster.local
+            - --prometheus-url=http://prometheus-server.monitoring.svc.cluster.local:9090
+            - --calibration-days=7
+            - --target-false-positive-rate=0.05
+            env:
+            - name: KUBECONFIG
+              value: /var/run/secrets/kubernetes.io/serviceaccount
+            resources:
+              requests:
+                cpu: 200m
+                memory: 512Mi
+              limits:
+                cpu: 500m
+                memory: 1Gi
+            volumeMounts:
+            - name: config-volume
+              mountPath: /etc/config
+          volumes:
+          - name: config-volume
+            configMap:
+              name: isolation-forest-config

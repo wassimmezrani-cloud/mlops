@@ -1,0 +1,1747 @@
+# PIPELINE DEFINITION
+# Name: ml-scheduler-training-pipeline
+# Description: ML-Scheduler Trio AI Training & Deployment Pipeline
+# Inputs:
+#    auto_deployment: bool [Default: True]
+#    collection_period_days: int [Default: 30.0]
+#    deployment_config: dict
+#    isolation_hyperparameters: dict
+#    kserve_namespace: str [Default: 'ml-scheduler']
+#    metrics_list: list
+#    mlflow_tracking_uri: str [Default: 'http://mlflow.kubeflow.svc.cluster.local:5000']
+#    performance_thresholds: dict
+#    prometheus_endpoint: str [Default: 'http://prometheus.monitoring.svc.cluster.local:9090']
+#    qlearning_hyperparameters: dict
+#    rollback_enabled: bool [Default: True]
+#    validation_split: float [Default: 0.2]
+#    xgboost_hyperparameters: dict
+# Outputs:
+#    data-collection-component-quality_report: system.Metrics
+#    kserve-deployment-component-deployment_status: system.Metrics
+#    kserve-deployment-component-health_check_results: system.Metrics
+#    preprocessing-component-preprocessing_metrics: system.Metrics
+#    trio-training-component-2-model_metrics: system.Metrics
+#    trio-training-component-3-model_metrics: system.Metrics
+#    trio-training-component-model_metrics: system.Metrics
+#    trio-validation-component-integration_score: system.Metrics
+#    trio-validation-component-validation_report: system.Metrics
+components:
+  comp-condition-1:
+    dag:
+      outputs:
+        artifacts:
+          kserve-deployment-component-deployment_status:
+            artifactSelectors:
+            - outputArtifactKey: deployment_status
+              producerSubtask: kserve-deployment-component
+          kserve-deployment-component-health_check_results:
+            artifactSelectors:
+            - outputArtifactKey: health_check_results
+              producerSubtask: kserve-deployment-component
+      tasks:
+        kserve-deployment-component:
+          cachingOptions:
+            enableCache: true
+          componentRef:
+            name: comp-kserve-deployment-component
+          inputs:
+            artifacts:
+              validated_models:
+                componentInputArtifact: pipelinechannel--trio-validation-component-validated_models
+            parameters:
+              deployment_config:
+                componentInputParameter: pipelinechannel--deployment_config
+              kserve_namespace:
+                componentInputParameter: pipelinechannel--kserve_namespace
+          taskInfo:
+            name: kserve-deployment-component
+    inputDefinitions:
+      artifacts:
+        pipelinechannel--trio-validation-component-validated_models:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+      parameters:
+        pipelinechannel--deployment_config:
+          parameterType: STRUCT
+        pipelinechannel--kserve_namespace:
+          parameterType: STRING
+        pipelinechannel--trio-validation-component-go_no_go_decision:
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        kserve-deployment-component-deployment_status:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        kserve-deployment-component-health_check_results:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+  comp-data-collection-component:
+    executorLabel: exec-data-collection-component
+    inputDefinitions:
+      parameters:
+        collection_period_days:
+          description: "P\xE9riode de collecte en jours"
+          parameterType: NUMBER_INTEGER
+        metrics_list:
+          description: "Liste des m\xE9triques \xE0 collecter"
+          parameterType: LIST
+        prometheus_endpoint:
+          description: URL du serveur Prometheus
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        collection_metadata:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        quality_report:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        raw_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-kserve-deployment-component:
+    executorLabel: exec-kserve-deployment-component
+    inputDefinitions:
+      artifacts:
+        validated_models:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+          description: "Mod\xE8les valid\xE9s pour d\xE9ploiement"
+      parameters:
+        deployment_config:
+          description: "Configuration de d\xE9ploiement"
+          parameterType: STRUCT
+        kserve_namespace:
+          description: Namespace Kubernetes
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        deployment_status:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        health_check_results:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        service_endpoints:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-preprocessing-component:
+    executorLabel: exec-preprocessing-component
+    inputDefinitions:
+      artifacts:
+        raw_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+          description: Dataset brut de la collecte
+      parameters:
+        validation_split:
+          description: Ratio de split pour validation
+          parameterType: NUMBER_DOUBLE
+    outputDefinitions:
+      artifacts:
+        feature_metadata:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        preprocessing_metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        processed_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        train_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+        validation_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+  comp-trio-training-component:
+    executorLabel: exec-trio-training-component
+    inputDefinitions:
+      artifacts:
+        train_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+          description: "Dataset d'entra\xEEnement"
+        validation_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+          description: Dataset de validation
+      parameters:
+        algorithm_type:
+          description: Type d'algorithme (xgboost/qlearning/isolation)
+          parameterType: STRING
+        hyperparameters:
+          description: "Hyperparam\xE8tres sp\xE9cifiques"
+          parameterType: STRUCT
+        mlflow_tracking_uri:
+          description: URI du serveur MLflow
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        model_metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        trained_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        training_artifacts:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-trio-training-component-2:
+    executorLabel: exec-trio-training-component-2
+    inputDefinitions:
+      artifacts:
+        train_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+          description: "Dataset d'entra\xEEnement"
+        validation_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+          description: Dataset de validation
+      parameters:
+        algorithm_type:
+          description: Type d'algorithme (xgboost/qlearning/isolation)
+          parameterType: STRING
+        hyperparameters:
+          description: "Hyperparam\xE8tres sp\xE9cifiques"
+          parameterType: STRUCT
+        mlflow_tracking_uri:
+          description: URI du serveur MLflow
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        model_metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        trained_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        training_artifacts:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-trio-training-component-3:
+    executorLabel: exec-trio-training-component-3
+    inputDefinitions:
+      artifacts:
+        train_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+          description: "Dataset d'entra\xEEnement"
+        validation_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+          description: Dataset de validation
+      parameters:
+        algorithm_type:
+          description: Type d'algorithme (xgboost/qlearning/isolation)
+          parameterType: STRING
+        hyperparameters:
+          description: "Hyperparam\xE8tres sp\xE9cifiques"
+          parameterType: STRUCT
+        mlflow_tracking_uri:
+          description: URI du serveur MLflow
+          parameterType: STRING
+    outputDefinitions:
+      artifacts:
+        model_metrics:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        trained_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+        training_artifacts:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+  comp-trio-validation-component:
+    executorLabel: exec-trio-validation-component
+    inputDefinitions:
+      artifacts:
+        isolation_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+          description: "Mod\xE8le Isolation Forest entra\xEEn\xE9"
+        qlearning_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+          description: "Mod\xE8le Q-Learning entra\xEEn\xE9"
+        validation_dataset:
+          artifactType:
+            schemaTitle: system.Dataset
+            schemaVersion: 0.0.1
+          description: Dataset de validation
+        xgboost_model:
+          artifactType:
+            schemaTitle: system.Model
+            schemaVersion: 0.0.1
+          description: "Mod\xE8le XGBoost entra\xEEn\xE9"
+      parameters:
+        performance_thresholds:
+          description: Seuils de performance requis
+          parameterType: STRUCT
+    outputDefinitions:
+      artifacts:
+        integration_score:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+        validated_models:
+          artifactType:
+            schemaTitle: system.Artifact
+            schemaVersion: 0.0.1
+        validation_report:
+          artifactType:
+            schemaTitle: system.Metrics
+            schemaVersion: 0.0.1
+      parameters:
+        go_no_go_decision:
+          parameterType: STRING
+defaultPipelineRoot: gs://ml-scheduler-pipeline-root
+deploymentSpec:
+  executors:
+    exec-data-collection-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_collection_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'pandas==2.0.3'\
+          \ 'numpy==1.24.3' 'scikit-learn==1.3.0' 'mlflow==2.7.1' 'requests==2.31.0'\
+          \ 'prometheus-api-client==0.5.3' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_collection_component(\n    prometheus_endpoint: str,\n \
+          \   collection_period_days: int,\n    metrics_list: list,\n    raw_dataset:\
+          \ Output[Dataset],\n    quality_report: Output[Metrics], \n    collection_metadata:\
+          \ Output[Artifact]\n):\n    \"\"\"\n    Component 1: Data Collection from\
+          \ Prometheus\n    Collecte automatis\xE9e des m\xE9triques historiques\n\
+          \n    Args:\n        prometheus_endpoint: URL du serveur Prometheus\n  \
+          \      collection_period_days: P\xE9riode de collecte en jours\n       \
+          \ metrics_list: Liste des m\xE9triques \xE0 collecter\n        raw_dataset:\
+          \ Dataset de sortie avec donn\xE9es brutes\n        quality_report: Rapport\
+          \ qualit\xE9 des donn\xE9es\n        collection_metadata: M\xE9tadonn\xE9\
+          es de collecte\n    \"\"\"\n    import pandas as pd\n    import numpy as\
+          \ np\n    from datetime import datetime, timedelta\n    import requests\n\
+          \    import json\n    import logging\n\n    logging.basicConfig(level=logging.INFO)\n\
+          \    logger = logging.getLogger(__name__)\n\n    logger.info(f\"Starting\
+          \ data collection from {prometheus_endpoint}\")\n    logger.info(f\"Collection\
+          \ period: {collection_period_days} days\")\n    logger.info(f\"Metrics to\
+          \ collect: {len(metrics_list)}\")\n\n    # Simulate Prometheus data collection\
+          \ (in real implementation, use prometheus-api-client)\n    collection_start\
+          \ = datetime.now()\n\n    try:\n        # Generate synthetic historical\
+          \ data for ML-Scheduler\n        synthetic_data = []\n\n        # Time range\
+          \ for data collection\n        end_time = datetime.now()\n        start_time\
+          \ = end_time - timedelta(days=collection_period_days)\n\n        # Generate\
+          \ data points (every 5 minutes for the period)\n        time_points = pd.date_range(start_time,\
+          \ end_time, freq='5min')\n\n        for timestamp in time_points:\n    \
+          \        # Simulate multiple nodes data\n            for node_id in [f'worker-{i}'\
+          \ for i in range(1, 7)]:\n                # Base patterns with some realistic\
+          \ variation\n                hour = timestamp.hour\n                day_of_week\
+          \ = timestamp.weekday()\n\n                # Business hours pattern\n  \
+          \              business_factor = 1.0 if 8 <= hour <= 18 and day_of_week\
+          \ < 5 else 0.6\n\n                # Simulate node metrics\n            \
+          \    data_point = {\n                    'timestamp': timestamp.isoformat(),\n\
+          \                    'node_id': node_id,\n                    'cpu_utilization':\
+          \ np.random.normal(0.4 * business_factor, 0.15),\n                    'memory_utilization':\
+          \ np.random.normal(0.5 * business_factor, 0.1),\n                    'load_1min':\
+          \ np.random.normal(1.5 * business_factor, 0.5),\n                    'load_5min':\
+          \ np.random.normal(1.3 * business_factor, 0.4),\n                    'pod_count':\
+          \ np.random.poisson(15 * business_factor),\n                    'network_bytes_in':\
+          \ np.random.lognormal(20, 1) * business_factor,\n                    'network_bytes_out':\
+          \ np.random.lognormal(19, 1) * business_factor,\n                    'disk_usage_percent':\
+          \ np.random.normal(45, 10),\n                    'container_restarts': np.random.poisson(0.1),\n\
+          \                }\n\n                # Ensure realistic bounds\n      \
+          \          data_point['cpu_utilization'] = np.clip(data_point['cpu_utilization'],\
+          \ 0, 1)\n                data_point['memory_utilization'] = np.clip(data_point['memory_utilization'],\
+          \ 0, 1)\n                data_point['load_1min'] = np.clip(data_point['load_1min'],\
+          \ 0, 8)\n                data_point['load_5min'] = np.clip(data_point['load_5min'],\
+          \ 0, 8)\n                data_point['disk_usage_percent'] = np.clip(data_point['disk_usage_percent'],\
+          \ 0, 100)\n                data_point['container_restarts'] = max(0, data_point['container_restarts'])\n\
+          \n                synthetic_data.append(data_point)\n\n        # Convert\
+          \ to DataFrame\n        df = pd.DataFrame(synthetic_data)\n\n        # Data\
+          \ quality assessment\n        quality_metrics = {\n            'total_records':\
+          \ len(df),\n            'unique_nodes': df['node_id'].nunique(),\n     \
+          \       'time_span_hours': collection_period_days * 24,\n            'missing_values':\
+          \ df.isnull().sum().to_dict(),\n            'data_completeness': (1 - df.isnull().sum()\
+          \ / len(df)).to_dict(),\n            'collection_success': True,\n     \
+          \       'collection_time': (datetime.now() - collection_start).total_seconds()\n\
+          \        }\n\n        # Save raw dataset\n        df.to_parquet(raw_dataset.path,\
+          \ index=False)\n        logger.info(f\"Raw dataset saved: {len(df)} records,\
+          \ {df['node_id'].nunique()} nodes\")\n\n        # Save quality report\n\
+          \        with open(quality_report.path, 'w') as f:\n            json.dump(quality_metrics,\
+          \ f, indent=2, default=str)\n\n        # Save collection metadata\n    \
+          \    metadata = {\n            'collection_date': collection_start.isoformat(),\n\
+          \            'prometheus_endpoint': prometheus_endpoint,\n            'period_days':\
+          \ collection_period_days,\n            'metrics_collected': metrics_list,\n\
+          \            'dataset_shape': df.shape,\n            'node_count': df['node_id'].nunique(),\n\
+          \            'status': 'SUCCESS'\n        }\n\n        with open(collection_metadata.path,\
+          \ 'w') as f:\n            json.dump(metadata, f, indent=2)\n\n        logger.info(\"\
+          Data collection completed successfully\")\n\n    except Exception as e:\n\
+          \        logger.error(f\"Data collection failed: {e}\")\n        # Save\
+          \ error metadata\n        error_metadata = {\n            'collection_date':\
+          \ collection_start.isoformat(),\n            'error': str(e),\n        \
+          \    'status': 'FAILED'\n        }\n        with open(collection_metadata.path,\
+          \ 'w') as f:\n            json.dump(error_metadata, f, indent=2)\n     \
+          \   raise\n\n"
+        image: python:3.10-slim
+    exec-kserve-deployment-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - kserve_deployment_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'kubernetes==27.2.0'\
+          \ 'requests==2.31.0' 'pyyaml==6.0.1' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef kserve_deployment_component(\n    validated_models: dsl.Input[dsl.Artifact],\n\
+          \    deployment_config: dict,\n    kserve_namespace: str,\n    deployment_status:\
+          \ dsl.Output[dsl.Metrics],\n    service_endpoints: dsl.Output[dsl.Artifact],\
+          \ \n    health_check_results: dsl.Output[dsl.Metrics]\n):\n    \"\"\"\n\
+          \    Component 5: KServe Deployment - D\xE9ploiement automatique des mod\xE8\
+          les valid\xE9s\n\n    Args:\n        validated_models: Mod\xE8les valid\xE9\
+          s pour d\xE9ploiement\n        deployment_config: Configuration de d\xE9\
+          ploiement\n        kserve_namespace: Namespace Kubernetes\n        deployment_status:\
+          \ Statut du d\xE9ploiement\n        service_endpoints: Endpoints des services\
+          \ d\xE9ploy\xE9s\n        health_check_results: R\xE9sultats health check\n\
+          \    \"\"\"\n    import os\n    import json\n    import yaml\n    import\
+          \ requests\n    from datetime import datetime\n    import logging\n\n  \
+          \  logging.basicConfig(level=logging.INFO)\n    logger = logging.getLogger(__name__)\n\
+          \n    logger.info(f\"Starting KServe deployment in namespace {kserve_namespace}\"\
+          )\n\n    try:\n        # Check if models passed validation\n        deployment_manifest_path\
+          \ = os.path.join(validated_models.path, 'deployment_manifest.json')\n\n\
+          \        if os.path.exists(deployment_manifest_path):\n            with\
+          \ open(deployment_manifest_path, 'r') as f:\n                manifest =\
+          \ json.load(f)\n\n            if not manifest.get('validation_passed', False):\n\
+          \                raise ValueError(\"Models failed validation - cannot deploy\"\
+          )\n        else:\n            raise FileNotFoundError(\"Deployment manifest\
+          \ not found\")\n\n        # Create KServe InferenceService manifests for\
+          \ trio\n        inference_services = []\n        service_endpoints_dict\
+          \ = {}\n\n        # Define trio services configuration\n        trio_services\
+          \ = {\n            'xgboost-predictor': {\n                'model_file':\
+          \ 'xgboost_model.pkl',\n                'framework': 'sklearn',  # XGBoost\
+          \ compatible\n                'port': 8080,\n                'description':\
+          \ 'XGBoost Le Proph\xE8te - Future load prediction'\n            },\n  \
+          \          'qlearning-optimizer': {\n                'model_file': 'qlearning_model.pkl',\
+          \ \n                'framework': 'sklearn',\n                'port': 8081,\n\
+          \                'description': \"Q-Learning L'Optimiseur - Optimal placement\"\
+          \n            },\n            'isolation-detector': {\n                'model_file':\
+          \ 'isolation_model.pkl',\n                'framework': 'sklearn', \n   \
+          \             'port': 8082,\n                'description': 'Isolation Forest\
+          \ Le D\xE9tective - Anomaly detection'\n            }\n        }\n\n   \
+          \     # Generate InferenceService manifests\n        for service_name, config\
+          \ in trio_services.items():\n            inference_service = {\n       \
+          \         'apiVersion': 'serving.kserve.io/v1beta1',\n                'kind':\
+          \ 'InferenceService',\n                'metadata': {\n                 \
+          \   'name': service_name,\n                    'namespace': kserve_namespace,\n\
+          \                    'labels': {\n                        'app': 'ml-scheduler',\n\
+          \                        'component': service_name,\n                  \
+          \      'version': 'v1.0.0'\n                    },\n                   \
+          \ 'annotations': {\n                        'description': config['description'],\n\
+          \                        'deployment-timestamp': datetime.now().isoformat()\n\
+          \                    }\n                },\n                'spec': {\n\
+          \                    'predictor': {\n                        'sklearn':\
+          \ {\n                            'storageUri': f's3://ml-scheduler-models/{config[\"\
+          model_file\"]}',\n                            'resources': {\n         \
+          \                       'limits': {\n                                  \
+          \  'cpu': deployment_config.get('cpu_limit', '2'),\n                   \
+          \                 'memory': deployment_config.get('memory_limit', '4Gi')\n\
+          \                                },\n                                'requests':\
+          \ {\n                                    'cpu': deployment_config.get('cpu_request',\
+          \ '1'),\n                                    'memory': deployment_config.get('memory_request',\
+          \ '2Gi')\n                                }\n                          \
+          \  }\n                        }\n                    },\n              \
+          \      'transformer': {\n                        'containers': [{\n    \
+          \                        'name': 'transformer',\n                      \
+          \      'image': f'ml-scheduler/{service_name}-transformer:latest',\n   \
+          \                         'resources': {\n                             \
+          \   'requests': {\n                                    'cpu': '0.5',\n \
+          \                                   'memory': '1Gi'\n                  \
+          \              }\n                            }\n                      \
+          \  }]\n                    } if deployment_config.get('enable_transformer',\
+          \ True) else None\n                }\n            }\n\n            # Remove\
+          \ None transformer if not needed\n            if not deployment_config.get('enable_transformer',\
+          \ True):\n                inference_service['spec'].pop('transformer', None)\n\
+          \n            inference_services.append(inference_service)\n\n         \
+          \   # Service endpoint\n            service_endpoints_dict[service_name]\
+          \ = {\n                'url': f'http://{service_name}.{kserve_namespace}.svc.cluster.local',\n\
+          \                'external_url': f'http://{service_name}.{kserve_namespace}.example.com',\n\
+          \                'port': config['port'],\n                'health_endpoint':\
+          \ f'/v1/models/{service_name}',\n                'predict_endpoint': f'/v1/models/{service_name}:predict'\n\
+          \            }\n\n        # Simulate deployment (in real implementation,\
+          \ use kubernetes-client)\n        deployment_results = {}\n\n        for\
+          \ i, service in enumerate(inference_services):\n            service_name\
+          \ = service['metadata']['name']\n            logger.info(f\"Deploying {service_name}...\"\
+          )\n\n            # Simulate deployment success/failure\n            deployment_success\
+          \ = True  # In real impl, apply manifest to K8s\n\n            deployment_results[service_name]\
+          \ = {\n                'deployed': deployment_success,\n               \
+          \ 'deployment_time': datetime.now().isoformat(),\n                'namespace':\
+          \ kserve_namespace,\n                'service_url': service_endpoints_dict[service_name]['url'],\n\
+          \                'status': 'READY' if deployment_success else 'FAILED'\n\
+          \            }\n\n        # Health checks simulation\n        health_results\
+          \ = {}\n        all_healthy = True\n\n        for service_name, endpoint\
+          \ in service_endpoints_dict.items():\n            logger.info(f\"Health\
+          \ checking {service_name}...\")\n\n            # Simulate health check (in\
+          \ real impl, make HTTP request)\n            try:\n                # health_response\
+          \ = requests.get(f\"{endpoint['url']}/health\", timeout=30)\n          \
+          \      # healthy = health_response.status_code == 200\n                healthy\
+          \ = True  # Simulated success\n\n                health_results[service_name]\
+          \ = {\n                    'healthy': healthy,\n                    'response_time_ms':\
+          \ 45,  # Simulated\n                    'check_time': datetime.now().isoformat(),\n\
+          \                    'endpoint': endpoint['health_endpoint']\n         \
+          \       }\n\n                if not healthy:\n                    all_healthy\
+          \ = False\n\n            except Exception as e:\n                logger.warning(f\"\
+          Health check failed for {service_name}: {e}\")\n                health_results[service_name]\
+          \ = {\n                    'healthy': False,\n                    'error':\
+          \ str(e),\n                    'check_time': datetime.now().isoformat()\n\
+          \                }\n                all_healthy = False\n\n        # Deployment\
+          \ status summary\n        deployment_status_dict = {\n            'deployment_timestamp':\
+          \ datetime.now().isoformat(),\n            'namespace': kserve_namespace,\n\
+          \            'services_deployed': len([r for r in deployment_results.values()\
+          \ if r['deployed']]),\n            'total_services': len(deployment_results),\n\
+          \            'deployment_success': all(r['deployed'] for r in deployment_results.values()),\n\
+          \            'all_services_healthy': all_healthy,\n            'deployment_details':\
+          \ deployment_results,\n            'trio_deployment_complete': True\n  \
+          \      }\n\n        # Save deployment status\n        with open(deployment_status.path,\
+          \ 'w') as f:\n            json.dump(deployment_status_dict, f, indent=2,\
+          \ default=str)\n\n        # Save service endpoints\n        endpoints_summary\
+          \ = {\n            'trio_services': service_endpoints_dict,\n          \
+          \  'deployment_namespace': kserve_namespace,\n            'deployment_timestamp':\
+          \ datetime.now().isoformat(),\n            'kserve_manifests': [s['metadata']['name']\
+          \ for s in inference_services]\n        }\n\n        with open(service_endpoints.path,\
+          \ 'w') as f:\n            json.dump(endpoints_summary, f, indent=2)\n\n\
+          \        # Save health check results\n        health_summary = {\n     \
+          \       'health_check_timestamp': datetime.now().isoformat(),\n        \
+          \    'overall_health': all_healthy,\n            'services_healthy': len([h\
+          \ for h in health_results.values() if h['healthy']]),\n            'total_services':\
+          \ len(health_results),\n            'individual_health_results': health_results\n\
+          \        }\n\n        with open(health_check_results.path, 'w') as f:\n\
+          \            json.dump(health_summary, f, indent=2, default=str)\n\n   \
+          \     logger.info(f\"KServe deployment completed - {deployment_status_dict['services_deployed']}/{deployment_status_dict['total_services']}\
+          \ services deployed\")\n\n    except Exception as e:\n        logger.error(f\"\
+          KServe deployment failed: {e}\")\n\n        error_status = {\n         \
+          \   'deployment_success': False,\n            'error': str(e),\n       \
+          \     'deployment_timestamp': datetime.now().isoformat(),\n            'namespace':\
+          \ kserve_namespace\n        }\n\n        with open(deployment_status.path,\
+          \ 'w') as f:\n            json.dump(error_status, f, indent=2)\n\n     \
+          \   raise\n\n"
+        image: python:3.10-slim
+    exec-preprocessing-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - preprocessing_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'pandas==2.0.3'\
+          \ 'numpy==1.24.3' 'scikit-learn==1.3.0' 'mlflow==2.7.1' 'requests==2.31.0'\
+          \ && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef preprocessing_component(\n    raw_dataset: Input[Dataset],\n\
+          \    validation_split: float,\n    processed_dataset: Output[Dataset],\n\
+          \    train_dataset: Output[Dataset],\n    validation_dataset: Output[Dataset],\n\
+          \    feature_metadata: Output[Artifact],\n    preprocessing_metrics: Output[Metrics]\n\
+          ):\n    \"\"\"\n    Component 2: Data Preprocessing and Feature Engineering\n\
+          \    Nettoyage des donn\xE9es et feature engineering pour les 3 mod\xE8\
+          les\n\n    Args:\n        raw_dataset: Dataset brut de la collecte\n   \
+          \     validation_split: Ratio de split pour validation\n        processed_dataset:\
+          \ Dataset preprocess\xE9 complet\n        train_dataset: Dataset d'entra\xEE\
+          nement\n        validation_dataset: Dataset de validation\n        feature_metadata:\
+          \ M\xE9tadonn\xE9es des features\n        preprocessing_metrics: M\xE9triques\
+          \ de preprocessing\n    \"\"\"\n    import pandas as pd\n    import numpy\
+          \ as np\n    from sklearn.preprocessing import StandardScaler, RobustScaler\n\
+          \    from datetime import datetime\n    import json\n    import logging\n\
+          \n    logging.basicConfig(level=logging.INFO)\n    logger = logging.getLogger(__name__)\n\
+          \n    logger.info(\"Starting data preprocessing and feature engineering\"\
+          )\n\n    try:\n        # Load raw data\n        df = pd.read_parquet(raw_dataset.path)\n\
+          \        logger.info(f\"Loaded raw dataset: {df.shape}\")\n\n        # Data\
+          \ cleaning\n        logger.info(\"Performing data cleaning...\")\n\n   \
+          \     # Remove duplicates\n        initial_size = len(df)\n        df =\
+          \ df.drop_duplicates()\n        duplicates_removed = initial_size - len(df)\n\
+          \n        # Handle missing values\n        missing_before = df.isnull().sum().sum()\n\
+          \        df = df.dropna()  # Simple strategy for demo\n        missing_after\
+          \ = df.isnull().sum().sum()\n\n        # Sort by timestamp\n        df['timestamp']\
+          \ = pd.to_datetime(df['timestamp'])\n        df = df.sort_values(['node_id',\
+          \ 'timestamp'])\n\n        # Feature Engineering for ML-Scheduler\n    \
+          \    logger.info(\"Performing feature engineering...\")\n\n        # Time-based\
+          \ features\n        df['hour'] = df['timestamp'].dt.hour\n        df['day_of_week']\
+          \ = df['timestamp'].dt.dayofweek\n        df['is_business_hours'] = ((df['hour']\
+          \ >= 8) & (df['hour'] <= 18) & (df['day_of_week'] < 5)).astype(int)\n\n\
+          \        # Resource utilization features\n        df['resource_pressure']\
+          \ = df['cpu_utilization'] + df['memory_utilization']\n        df['load_efficiency']\
+          \ = df['load_1min'] / (df['cpu_utilization'] + 0.01)\n        df['memory_pressure_ratio']\
+          \ = df['memory_utilization'] / 0.8  # 80% threshold\n\n        # Rolling\
+          \ window features (per node)\n        logger.info(\"Computing rolling window\
+          \ features...\")\n        df = df.set_index(['node_id', 'timestamp']).sort_index()\n\
+          \n        for node in df.index.get_level_values('node_id').unique():\n \
+          \           node_data = df.loc[node]\n\n            # 1-hour rolling averages\
+          \ (12 points of 5min each)\n            df.loc[node, 'cpu_1h_avg'] = node_data['cpu_utilization'].rolling(12,\
+          \ min_periods=1).mean()\n            df.loc[node, 'memory_1h_avg'] = node_data['memory_utilization'].rolling(12,\
+          \ min_periods=1).mean()\n            df.loc[node, 'load_1h_avg'] = node_data['load_1min'].rolling(12,\
+          \ min_periods=1).mean()\n\n            # Trend indicators (difference from\
+          \ moving average)\n            df.loc[node, 'cpu_trend'] = node_data['cpu_utilization']\
+          \ - df.loc[node, 'cpu_1h_avg']\n            df.loc[node, 'memory_trend']\
+          \ = node_data['memory_utilization'] - df.loc[node, 'memory_1h_avg']\n\n\
+          \            # Volatility features\n            df.loc[node, 'cpu_volatility']\
+          \ = node_data['cpu_utilization'].rolling(12, min_periods=1).std()\n    \
+          \        df.loc[node, 'load_volatility'] = node_data['load_1min'].rolling(12,\
+          \ min_periods=1).std()\n\n        df = df.reset_index()\n\n        # Target\
+          \ variables for different algorithms\n        logger.info(\"Creating target\
+          \ variables for each algorithm...\")\n\n        # XGBoost targets (future\
+          \ utilization prediction)\n        df_sorted = df.sort_values(['node_id',\
+          \ 'timestamp'])\n        for node in df['node_id'].unique():\n         \
+          \   node_mask = df_sorted['node_id'] == node\n            # Target: CPU/Memory\
+          \ in next 1 hour (12 steps ahead)\n            df.loc[df['node_id'] == node,\
+          \ 'cpu_target_1h'] = df_sorted.loc[node_mask, 'cpu_utilization'].shift(-12)\n\
+          \            df.loc[df['node_id'] == node, 'memory_target_1h'] = df_sorted.loc[node_mask,\
+          \ 'memory_utilization'].shift(-12)\n\n        # Q-Learning targets (optimal\
+          \ placement decisions)\n        # Simplified: binary target based on resource\
+          \ availability\n        df['placement_optimal'] = ((df['cpu_utilization']\
+          \ < 0.7) & \n                                  (df['memory_utilization']\
+          \ < 0.8) & \n                                  (df['load_1min'] < 3.0)).astype(int)\n\
+          \n        # Isolation Forest targets (anomaly labels)\n        # Simplified:\
+          \ mark extreme values as anomalies\n        cpu_q95 = df['cpu_utilization'].quantile(0.95)\n\
+          \        memory_q95 = df['memory_utilization'].quantile(0.95)\n        load_q95\
+          \ = df['load_1min'].quantile(0.95)\n\n        df['is_anomaly'] = ((df['cpu_utilization']\
+          \ > cpu_q95) | \n                           (df['memory_utilization'] >\
+          \ memory_q95) | \n                           (df['load_1min'] > load_q95)\
+          \ |\n                           (df['container_restarts'] > 5)).astype(int)\n\
+          \n        # Remove rows with NaN targets (from shifting)\n        df = df.dropna()\n\
+          \n        # Feature selection for each algorithm\n        base_features\
+          \ = [\n            'cpu_utilization', 'memory_utilization', 'load_1min',\
+          \ 'load_5min',\n            'pod_count', 'disk_usage_percent', 'hour', 'day_of_week',\
+          \ 'is_business_hours',\n            'resource_pressure', 'load_efficiency',\
+          \ 'memory_pressure_ratio',\n            'cpu_1h_avg', 'memory_1h_avg', 'load_1h_avg',\
+          \ 'cpu_trend', 'memory_trend',\n            'cpu_volatility', 'load_volatility'\n\
+          \        ]\n\n        feature_sets = {\n            'xgboost_features':\
+          \ base_features,\n            'qlearning_features': base_features + ['placement_optimal'],\n\
+          \            'isolation_features': base_features + ['is_anomaly']\n    \
+          \    }\n\n        # Train-validation split\n        logger.info(f\"Splitting\
+          \ data with validation_split={validation_split}\")\n        split_point\
+          \ = int(len(df) * (1 - validation_split))\n\n        train_df = df.iloc[:split_point].copy()\n\
+          \        val_df = df.iloc[split_point:].copy()\n\n        logger.info(f\"\
+          Train set: {len(train_df)} records\")\n        logger.info(f\"Validation\
+          \ set: {len(val_df)} records\")\n\n        # Save datasets\n        df.to_parquet(processed_dataset.path,\
+          \ index=False)\n        train_df.to_parquet(train_dataset.path, index=False)\n\
+          \        val_df.to_parquet(validation_dataset.path, index=False)\n\n   \
+          \     # Feature metadata\n        feature_metadata_dict = {\n          \
+          \  'total_features': len(base_features),\n            'feature_sets': feature_sets,\n\
+          \            'feature_descriptions': {\n                'cpu_utilization':\
+          \ 'CPU utilization ratio (0-1)',\n                'memory_utilization':\
+          \ 'Memory utilization ratio (0-1)', \n                'load_1min': '1-minute\
+          \ load average',\n                'resource_pressure': 'Combined CPU+Memory\
+          \ pressure',\n                'cpu_1h_avg': '1-hour rolling average CPU',\n\
+          \                'cpu_trend': 'CPU trend vs moving average',\n         \
+          \       'cpu_volatility': 'CPU volatility (rolling std)',\n            \
+          \    'placement_optimal': 'Binary optimal placement target',\n         \
+          \       'is_anomaly': 'Binary anomaly label'\n            },\n         \
+          \   'preprocessing_steps': [\n                'Duplicate removal',\n   \
+          \             'Missing value handling',\n                'Time-based feature\
+          \ engineering',\n                'Rolling window calculations',\n      \
+          \          'Target variable creation',\n                'Train-validation\
+          \ split'\n            ]\n        }\n\n        with open(feature_metadata.path,\
+          \ 'w') as f:\n            json.dump(feature_metadata_dict, f, indent=2)\n\
+          \n        # Preprocessing metrics\n        preprocessing_metrics_dict =\
+          \ {\n            'input_records': initial_size,\n            'output_records':\
+          \ len(df),\n            'duplicates_removed': duplicates_removed,\n    \
+          \        'missing_values_removed': missing_before - missing_after,\n   \
+          \         'features_created': len(base_features),\n            'train_records':\
+          \ len(train_df),\n            'validation_records': len(val_df),\n     \
+          \       'validation_split_ratio': validation_split,\n            'feature_engineering_success':\
+          \ True,\n            'processing_time': datetime.now().isoformat()\n   \
+          \     }\n\n        with open(preprocessing_metrics.path, 'w') as f:\n  \
+          \          json.dump(preprocessing_metrics_dict, f, indent=2)\n\n      \
+          \  logger.info(\"Preprocessing completed successfully\")\n\n    except Exception\
+          \ as e:\n        logger.error(f\"Preprocessing failed: {e}\")\n        error_metrics\
+          \ = {\n            'preprocessing_success': False,\n            'error':\
+          \ str(e),\n            'processing_time': datetime.now().isoformat()\n \
+          \       }\n        with open(preprocessing_metrics.path, 'w') as f:\n  \
+          \          json.dump(error_metrics, f, indent=2)\n        raise\n\n"
+        image: python:3.10-slim
+    exec-trio-training-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - trio_training_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'pandas==2.0.3'\
+          \ 'numpy==1.24.3' 'scikit-learn==1.3.0' 'mlflow==2.7.1' 'requests==2.31.0'\
+          \ 'xgboost==1.7.6' 'joblib==1.3.2' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef trio_training_component(\n    train_dataset: Input[Dataset],\n\
+          \    validation_dataset: Input[Dataset],\n    algorithm_type: str,\n   \
+          \ hyperparameters: dict,\n    mlflow_tracking_uri: str,\n    trained_model:\
+          \ Output[Model],\n    model_metrics: Output[Metrics],\n    training_artifacts:\
+          \ Output[Artifact]\n):\n    \"\"\"\n    Component 3: Trio Training - Entra\xEE\
+          nement parall\xE8le des 3 experts IA\n    XGBoost / Q-Learning / Isolation\
+          \ Forest\n\n    Args:\n        train_dataset: Dataset d'entra\xEEnement\n\
+          \        validation_dataset: Dataset de validation\n        algorithm_type:\
+          \ Type d'algorithme (xgboost/qlearning/isolation)\n        hyperparameters:\
+          \ Hyperparam\xE8tres sp\xE9cifiques\n        mlflow_tracking_uri: URI du\
+          \ serveur MLflow\n        trained_model: Mod\xE8le entra\xEEn\xE9\n    \
+          \    model_metrics: M\xE9triques de performance\n        training_artifacts:\
+          \ Artefacts d'entra\xEEnement\n    \"\"\"\n    import pandas as pd\n   \
+          \ import numpy as np\n    import joblib\n    import json\n    from datetime\
+          \ import datetime\n    import logging\n\n    # Algorithm-specific imports\n\
+          \    if algorithm_type == 'xgboost':\n        import xgboost as xgb\n  \
+          \  elif algorithm_type in ['qlearning', 'isolation']:\n        from sklearn.ensemble\
+          \ import IsolationForest\n        from sklearn.preprocessing import StandardScaler\n\
+          \n    logging.basicConfig(level=logging.INFO)\n    logger = logging.getLogger(__name__)\n\
+          \n    logger.info(f\"Starting {algorithm_type} training\")\n\n    try:\n\
+          \        # Load datasets\n        train_df = pd.read_parquet(train_dataset.path)\n\
+          \        val_df = pd.read_parquet(validation_dataset.path)\n\n        logger.info(f\"\
+          Loaded training data: {train_df.shape}\")\n        logger.info(f\"Loaded\
+          \ validation data: {val_df.shape}\")\n\n        # Define base features\n\
+          \        base_features = [\n            'cpu_utilization', 'memory_utilization',\
+          \ 'load_1min', 'load_5min',\n            'pod_count', 'disk_usage_percent',\
+          \ 'hour', 'day_of_week', 'is_business_hours',\n            'resource_pressure',\
+          \ 'load_efficiency', 'memory_pressure_ratio',\n            'cpu_1h_avg',\
+          \ 'memory_1h_avg', 'load_1h_avg', 'cpu_trend', 'memory_trend',\n       \
+          \     'cpu_volatility', 'load_volatility'\n        ]\n\n        # Algorithm-specific\
+          \ training\n        if algorithm_type == 'xgboost':\n            logger.info(\"\
+          Training XGBoost Le Proph\xE8te for future prediction\")\n\n           \
+          \ # Features and targets for XGBoost\n            X_train = train_df[base_features]\n\
+          \            X_val = val_df[base_features]\n\n            # Train separate\
+          \ models for CPU and Memory prediction\n            models = {}\n      \
+          \      metrics = {}\n\n            for target in ['cpu_target_1h', 'memory_target_1h']:\n\
+          \                y_train = train_df[target]\n                y_val = val_df[target]\n\
+          \n                # XGBoost model\n                model = xgb.XGBRegressor(\n\
+          \                    n_estimators=hyperparameters.get('n_estimators', 100),\n\
+          \                    max_depth=hyperparameters.get('max_depth', 6),\n  \
+          \                  learning_rate=hyperparameters.get('learning_rate', 0.1),\n\
+          \                    random_state=42\n                )\n\n            \
+          \    # Train model\n                model.fit(X_train, y_train)\n\n    \
+          \            # Predictions\n                train_pred = model.predict(X_train)\n\
+          \                val_pred = model.predict(X_val)\n\n                # Metrics\n\
+          \                from sklearn.metrics import mean_squared_error, r2_score,\
+          \ mean_absolute_error\n                train_rmse = np.sqrt(mean_squared_error(y_train,\
+          \ train_pred))\n                val_rmse = np.sqrt(mean_squared_error(y_val,\
+          \ val_pred))\n                train_r2 = r2_score(y_train, train_pred)\n\
+          \                val_r2 = r2_score(y_val, val_pred)\n                val_mae\
+          \ = mean_absolute_error(y_val, val_pred)\n\n                models[target]\
+          \ = model\n                metrics[target] = {\n                    'train_rmse':\
+          \ train_rmse,\n                    'val_rmse': val_rmse,\n             \
+          \       'train_r2': train_r2,\n                    'val_r2': val_r2,\n \
+          \                   'val_mae': val_mae\n                }\n\n          \
+          \      logger.info(f\"{target} - Val R2: {val_r2:.3f}, Val RMSE: {val_rmse:.3f}\"\
+          )\n\n            # Business score calculation\n            avg_r2 = np.mean([m['val_r2']\
+          \ for m in metrics.values()])\n            business_score = min(100, max(0,\
+          \ avg_r2 * 100))\n\n            model_metrics_dict = {\n               \
+          \ 'algorithm': 'XGBoost',\n                'expert_name': 'Le Proph\xE8\
+          te',\n                'cpu_model_metrics': metrics['cpu_target_1h'],\n \
+          \               'memory_model_metrics': metrics['memory_target_1h'],\n \
+          \               'average_r2_score': avg_r2,\n                'business_score':\
+          \ business_score,\n                'training_time': datetime.now().isoformat()\n\
+          \            }\n\n        elif algorithm_type == 'qlearning':\n        \
+          \    logger.info(\"Training Q-Learning L'Optimiseur for optimal placement\"\
+          )\n\n            # Simplified Q-Learning simulation using classification\n\
+          \            from sklearn.ensemble import RandomForestClassifier\n     \
+          \       from sklearn.metrics import accuracy_score, classification_report\n\
+          \n            X_train = train_df[base_features]\n            X_val = val_df[base_features]\n\
+          \            y_train = train_df['placement_optimal']\n            y_val\
+          \ = val_df['placement_optimal']\n\n            # Use Random Forest as Q-Learning\
+          \ approximator for demo\n            model = RandomForestClassifier(\n \
+          \               n_estimators=hyperparameters.get('n_estimators', 100),\n\
+          \                max_depth=hyperparameters.get('max_depth', 10),\n     \
+          \           random_state=42\n            )\n\n            model.fit(X_train,\
+          \ y_train)\n\n            # Predictions\n            train_pred = model.predict(X_train)\n\
+          \            val_pred = model.predict(X_val)\n            train_pred_proba\
+          \ = model.predict_proba(X_train)[:, 1]\n            val_pred_proba = model.predict_proba(X_val)[:,\
+          \ 1]\n\n            # Metrics\n            train_acc = accuracy_score(y_train,\
+          \ train_pred)\n            val_acc = accuracy_score(y_val, val_pred)\n\n\
+          \            # Simulate improvement vs random baseline\n            random_accuracy\
+          \ = 0.5  # Random placement\n            improvement = (val_acc - random_accuracy)\
+          \ / random_accuracy * 100\n\n            models = {'qlearning_classifier':\
+          \ model}\n            business_score = min(100, max(0, improvement * 5))\
+          \  # Scale to 100\n\n            model_metrics_dict = {\n              \
+          \  'algorithm': 'Q-Learning',\n                'expert_name': \"L'Optimiseur\"\
+          ,\n                'train_accuracy': train_acc,\n                'val_accuracy':\
+          \ val_acc,\n                'improvement_vs_random': improvement,\n    \
+          \            'business_score': business_score,\n                'training_time':\
+          \ datetime.now().isoformat()\n            }\n\n        elif algorithm_type\
+          \ == 'isolation':\n            logger.info(\"Training Isolation Forest Le\
+          \ D\xE9tective for anomaly detection\")\n\n            X_train = train_df[base_features]\n\
+          \            X_val = val_df[base_features]\n            y_val = val_df['is_anomaly']\
+          \  # Only for validation\n\n            # Isolation Forest (unsupervised)\n\
+          \            scaler = StandardScaler()\n            X_train_scaled = scaler.fit_transform(X_train)\n\
+          \            X_val_scaled = scaler.transform(X_val)\n\n            model\
+          \ = IsolationForest(\n                n_estimators=hyperparameters.get('n_estimators',\
+          \ 100),\n                contamination=hyperparameters.get('contamination',\
+          \ 0.1),\n                random_state=42\n            )\n\n            model.fit(X_train_scaled)\n\
+          \n            # Predictions (anomaly detection)\n            val_pred =\
+          \ model.predict(X_val_scaled)\n            val_pred_binary = (val_pred ==\
+          \ -1).astype(int)  # -1 = anomaly\n\n            # Metrics\n           \
+          \ from sklearn.metrics import precision_score, recall_score, f1_score\n\
+          \            precision = precision_score(y_val, val_pred_binary, zero_division=0)\n\
+          \            recall = recall_score(y_val, val_pred_binary, zero_division=0)\n\
+          \            f1 = f1_score(y_val, val_pred_binary, zero_division=0)\n\n\
+          \            # Anomaly detection rate\n            anomaly_rate = np.sum(val_pred_binary)\
+          \ / len(val_pred_binary)\n\n            models = {'isolation_forest': model,\
+          \ 'scaler': scaler}\n            business_score = min(100, max(0, f1 * 100))\n\
+          \n            model_metrics_dict = {\n                'algorithm': 'Isolation\
+          \ Forest',\n                'expert_name': 'Le D\xE9tective',\n        \
+          \        'precision': precision,\n                'recall': recall,\n  \
+          \              'f1_score': f1,\n                'anomaly_detection_rate':\
+          \ anomaly_rate,\n                'business_score': business_score,\n   \
+          \             'training_time': datetime.now().isoformat()\n            }\n\
+          \n        # Save trained model\n        joblib.dump(models, trained_model.path)\n\
+          \n        # Save metrics\n        with open(model_metrics.path, 'w') as\
+          \ f:\n            json.dump(model_metrics_dict, f, indent=2, default=str)\n\
+          \n        # Save training artifacts\n        artifacts = {\n           \
+          \ 'algorithm_type': algorithm_type,\n            'hyperparameters': hyperparameters,\n\
+          \            'feature_names': base_features,\n            'model_type':\
+          \ type(list(models.values())[0]).__name__,\n            'training_samples':\
+          \ len(train_df),\n            'validation_samples': len(val_df),\n     \
+          \       'business_score': business_score\n        }\n\n        with open(training_artifacts.path,\
+          \ 'w') as f:\n            json.dump(artifacts, f, indent=2)\n\n        logger.info(f\"\
+          {algorithm_type} training completed - Business score: {business_score:.1f}/100\"\
+          )\n\n    except Exception as e:\n        logger.error(f\"{algorithm_type}\
+          \ training failed: {e}\")\n        error_metrics = {\n            'algorithm':\
+          \ algorithm_type,\n            'training_success': False,\n            'error':\
+          \ str(e),\n            'training_time': datetime.now().isoformat()\n   \
+          \     }\n        with open(model_metrics.path, 'w') as f:\n            json.dump(error_metrics,\
+          \ f, indent=2)\n        raise\n\n"
+        image: python:3.10-slim
+    exec-trio-training-component-2:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - trio_training_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'pandas==2.0.3'\
+          \ 'numpy==1.24.3' 'scikit-learn==1.3.0' 'mlflow==2.7.1' 'requests==2.31.0'\
+          \ 'xgboost==1.7.6' 'joblib==1.3.2' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef trio_training_component(\n    train_dataset: Input[Dataset],\n\
+          \    validation_dataset: Input[Dataset],\n    algorithm_type: str,\n   \
+          \ hyperparameters: dict,\n    mlflow_tracking_uri: str,\n    trained_model:\
+          \ Output[Model],\n    model_metrics: Output[Metrics],\n    training_artifacts:\
+          \ Output[Artifact]\n):\n    \"\"\"\n    Component 3: Trio Training - Entra\xEE\
+          nement parall\xE8le des 3 experts IA\n    XGBoost / Q-Learning / Isolation\
+          \ Forest\n\n    Args:\n        train_dataset: Dataset d'entra\xEEnement\n\
+          \        validation_dataset: Dataset de validation\n        algorithm_type:\
+          \ Type d'algorithme (xgboost/qlearning/isolation)\n        hyperparameters:\
+          \ Hyperparam\xE8tres sp\xE9cifiques\n        mlflow_tracking_uri: URI du\
+          \ serveur MLflow\n        trained_model: Mod\xE8le entra\xEEn\xE9\n    \
+          \    model_metrics: M\xE9triques de performance\n        training_artifacts:\
+          \ Artefacts d'entra\xEEnement\n    \"\"\"\n    import pandas as pd\n   \
+          \ import numpy as np\n    import joblib\n    import json\n    from datetime\
+          \ import datetime\n    import logging\n\n    # Algorithm-specific imports\n\
+          \    if algorithm_type == 'xgboost':\n        import xgboost as xgb\n  \
+          \  elif algorithm_type in ['qlearning', 'isolation']:\n        from sklearn.ensemble\
+          \ import IsolationForest\n        from sklearn.preprocessing import StandardScaler\n\
+          \n    logging.basicConfig(level=logging.INFO)\n    logger = logging.getLogger(__name__)\n\
+          \n    logger.info(f\"Starting {algorithm_type} training\")\n\n    try:\n\
+          \        # Load datasets\n        train_df = pd.read_parquet(train_dataset.path)\n\
+          \        val_df = pd.read_parquet(validation_dataset.path)\n\n        logger.info(f\"\
+          Loaded training data: {train_df.shape}\")\n        logger.info(f\"Loaded\
+          \ validation data: {val_df.shape}\")\n\n        # Define base features\n\
+          \        base_features = [\n            'cpu_utilization', 'memory_utilization',\
+          \ 'load_1min', 'load_5min',\n            'pod_count', 'disk_usage_percent',\
+          \ 'hour', 'day_of_week', 'is_business_hours',\n            'resource_pressure',\
+          \ 'load_efficiency', 'memory_pressure_ratio',\n            'cpu_1h_avg',\
+          \ 'memory_1h_avg', 'load_1h_avg', 'cpu_trend', 'memory_trend',\n       \
+          \     'cpu_volatility', 'load_volatility'\n        ]\n\n        # Algorithm-specific\
+          \ training\n        if algorithm_type == 'xgboost':\n            logger.info(\"\
+          Training XGBoost Le Proph\xE8te for future prediction\")\n\n           \
+          \ # Features and targets for XGBoost\n            X_train = train_df[base_features]\n\
+          \            X_val = val_df[base_features]\n\n            # Train separate\
+          \ models for CPU and Memory prediction\n            models = {}\n      \
+          \      metrics = {}\n\n            for target in ['cpu_target_1h', 'memory_target_1h']:\n\
+          \                y_train = train_df[target]\n                y_val = val_df[target]\n\
+          \n                # XGBoost model\n                model = xgb.XGBRegressor(\n\
+          \                    n_estimators=hyperparameters.get('n_estimators', 100),\n\
+          \                    max_depth=hyperparameters.get('max_depth', 6),\n  \
+          \                  learning_rate=hyperparameters.get('learning_rate', 0.1),\n\
+          \                    random_state=42\n                )\n\n            \
+          \    # Train model\n                model.fit(X_train, y_train)\n\n    \
+          \            # Predictions\n                train_pred = model.predict(X_train)\n\
+          \                val_pred = model.predict(X_val)\n\n                # Metrics\n\
+          \                from sklearn.metrics import mean_squared_error, r2_score,\
+          \ mean_absolute_error\n                train_rmse = np.sqrt(mean_squared_error(y_train,\
+          \ train_pred))\n                val_rmse = np.sqrt(mean_squared_error(y_val,\
+          \ val_pred))\n                train_r2 = r2_score(y_train, train_pred)\n\
+          \                val_r2 = r2_score(y_val, val_pred)\n                val_mae\
+          \ = mean_absolute_error(y_val, val_pred)\n\n                models[target]\
+          \ = model\n                metrics[target] = {\n                    'train_rmse':\
+          \ train_rmse,\n                    'val_rmse': val_rmse,\n             \
+          \       'train_r2': train_r2,\n                    'val_r2': val_r2,\n \
+          \                   'val_mae': val_mae\n                }\n\n          \
+          \      logger.info(f\"{target} - Val R2: {val_r2:.3f}, Val RMSE: {val_rmse:.3f}\"\
+          )\n\n            # Business score calculation\n            avg_r2 = np.mean([m['val_r2']\
+          \ for m in metrics.values()])\n            business_score = min(100, max(0,\
+          \ avg_r2 * 100))\n\n            model_metrics_dict = {\n               \
+          \ 'algorithm': 'XGBoost',\n                'expert_name': 'Le Proph\xE8\
+          te',\n                'cpu_model_metrics': metrics['cpu_target_1h'],\n \
+          \               'memory_model_metrics': metrics['memory_target_1h'],\n \
+          \               'average_r2_score': avg_r2,\n                'business_score':\
+          \ business_score,\n                'training_time': datetime.now().isoformat()\n\
+          \            }\n\n        elif algorithm_type == 'qlearning':\n        \
+          \    logger.info(\"Training Q-Learning L'Optimiseur for optimal placement\"\
+          )\n\n            # Simplified Q-Learning simulation using classification\n\
+          \            from sklearn.ensemble import RandomForestClassifier\n     \
+          \       from sklearn.metrics import accuracy_score, classification_report\n\
+          \n            X_train = train_df[base_features]\n            X_val = val_df[base_features]\n\
+          \            y_train = train_df['placement_optimal']\n            y_val\
+          \ = val_df['placement_optimal']\n\n            # Use Random Forest as Q-Learning\
+          \ approximator for demo\n            model = RandomForestClassifier(\n \
+          \               n_estimators=hyperparameters.get('n_estimators', 100),\n\
+          \                max_depth=hyperparameters.get('max_depth', 10),\n     \
+          \           random_state=42\n            )\n\n            model.fit(X_train,\
+          \ y_train)\n\n            # Predictions\n            train_pred = model.predict(X_train)\n\
+          \            val_pred = model.predict(X_val)\n            train_pred_proba\
+          \ = model.predict_proba(X_train)[:, 1]\n            val_pred_proba = model.predict_proba(X_val)[:,\
+          \ 1]\n\n            # Metrics\n            train_acc = accuracy_score(y_train,\
+          \ train_pred)\n            val_acc = accuracy_score(y_val, val_pred)\n\n\
+          \            # Simulate improvement vs random baseline\n            random_accuracy\
+          \ = 0.5  # Random placement\n            improvement = (val_acc - random_accuracy)\
+          \ / random_accuracy * 100\n\n            models = {'qlearning_classifier':\
+          \ model}\n            business_score = min(100, max(0, improvement * 5))\
+          \  # Scale to 100\n\n            model_metrics_dict = {\n              \
+          \  'algorithm': 'Q-Learning',\n                'expert_name': \"L'Optimiseur\"\
+          ,\n                'train_accuracy': train_acc,\n                'val_accuracy':\
+          \ val_acc,\n                'improvement_vs_random': improvement,\n    \
+          \            'business_score': business_score,\n                'training_time':\
+          \ datetime.now().isoformat()\n            }\n\n        elif algorithm_type\
+          \ == 'isolation':\n            logger.info(\"Training Isolation Forest Le\
+          \ D\xE9tective for anomaly detection\")\n\n            X_train = train_df[base_features]\n\
+          \            X_val = val_df[base_features]\n            y_val = val_df['is_anomaly']\
+          \  # Only for validation\n\n            # Isolation Forest (unsupervised)\n\
+          \            scaler = StandardScaler()\n            X_train_scaled = scaler.fit_transform(X_train)\n\
+          \            X_val_scaled = scaler.transform(X_val)\n\n            model\
+          \ = IsolationForest(\n                n_estimators=hyperparameters.get('n_estimators',\
+          \ 100),\n                contamination=hyperparameters.get('contamination',\
+          \ 0.1),\n                random_state=42\n            )\n\n            model.fit(X_train_scaled)\n\
+          \n            # Predictions (anomaly detection)\n            val_pred =\
+          \ model.predict(X_val_scaled)\n            val_pred_binary = (val_pred ==\
+          \ -1).astype(int)  # -1 = anomaly\n\n            # Metrics\n           \
+          \ from sklearn.metrics import precision_score, recall_score, f1_score\n\
+          \            precision = precision_score(y_val, val_pred_binary, zero_division=0)\n\
+          \            recall = recall_score(y_val, val_pred_binary, zero_division=0)\n\
+          \            f1 = f1_score(y_val, val_pred_binary, zero_division=0)\n\n\
+          \            # Anomaly detection rate\n            anomaly_rate = np.sum(val_pred_binary)\
+          \ / len(val_pred_binary)\n\n            models = {'isolation_forest': model,\
+          \ 'scaler': scaler}\n            business_score = min(100, max(0, f1 * 100))\n\
+          \n            model_metrics_dict = {\n                'algorithm': 'Isolation\
+          \ Forest',\n                'expert_name': 'Le D\xE9tective',\n        \
+          \        'precision': precision,\n                'recall': recall,\n  \
+          \              'f1_score': f1,\n                'anomaly_detection_rate':\
+          \ anomaly_rate,\n                'business_score': business_score,\n   \
+          \             'training_time': datetime.now().isoformat()\n            }\n\
+          \n        # Save trained model\n        joblib.dump(models, trained_model.path)\n\
+          \n        # Save metrics\n        with open(model_metrics.path, 'w') as\
+          \ f:\n            json.dump(model_metrics_dict, f, indent=2, default=str)\n\
+          \n        # Save training artifacts\n        artifacts = {\n           \
+          \ 'algorithm_type': algorithm_type,\n            'hyperparameters': hyperparameters,\n\
+          \            'feature_names': base_features,\n            'model_type':\
+          \ type(list(models.values())[0]).__name__,\n            'training_samples':\
+          \ len(train_df),\n            'validation_samples': len(val_df),\n     \
+          \       'business_score': business_score\n        }\n\n        with open(training_artifacts.path,\
+          \ 'w') as f:\n            json.dump(artifacts, f, indent=2)\n\n        logger.info(f\"\
+          {algorithm_type} training completed - Business score: {business_score:.1f}/100\"\
+          )\n\n    except Exception as e:\n        logger.error(f\"{algorithm_type}\
+          \ training failed: {e}\")\n        error_metrics = {\n            'algorithm':\
+          \ algorithm_type,\n            'training_success': False,\n            'error':\
+          \ str(e),\n            'training_time': datetime.now().isoformat()\n   \
+          \     }\n        with open(model_metrics.path, 'w') as f:\n            json.dump(error_metrics,\
+          \ f, indent=2)\n        raise\n\n"
+        image: python:3.10-slim
+    exec-trio-training-component-3:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - trio_training_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'pandas==2.0.3'\
+          \ 'numpy==1.24.3' 'scikit-learn==1.3.0' 'mlflow==2.7.1' 'requests==2.31.0'\
+          \ 'xgboost==1.7.6' 'joblib==1.3.2' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef trio_training_component(\n    train_dataset: Input[Dataset],\n\
+          \    validation_dataset: Input[Dataset],\n    algorithm_type: str,\n   \
+          \ hyperparameters: dict,\n    mlflow_tracking_uri: str,\n    trained_model:\
+          \ Output[Model],\n    model_metrics: Output[Metrics],\n    training_artifacts:\
+          \ Output[Artifact]\n):\n    \"\"\"\n    Component 3: Trio Training - Entra\xEE\
+          nement parall\xE8le des 3 experts IA\n    XGBoost / Q-Learning / Isolation\
+          \ Forest\n\n    Args:\n        train_dataset: Dataset d'entra\xEEnement\n\
+          \        validation_dataset: Dataset de validation\n        algorithm_type:\
+          \ Type d'algorithme (xgboost/qlearning/isolation)\n        hyperparameters:\
+          \ Hyperparam\xE8tres sp\xE9cifiques\n        mlflow_tracking_uri: URI du\
+          \ serveur MLflow\n        trained_model: Mod\xE8le entra\xEEn\xE9\n    \
+          \    model_metrics: M\xE9triques de performance\n        training_artifacts:\
+          \ Artefacts d'entra\xEEnement\n    \"\"\"\n    import pandas as pd\n   \
+          \ import numpy as np\n    import joblib\n    import json\n    from datetime\
+          \ import datetime\n    import logging\n\n    # Algorithm-specific imports\n\
+          \    if algorithm_type == 'xgboost':\n        import xgboost as xgb\n  \
+          \  elif algorithm_type in ['qlearning', 'isolation']:\n        from sklearn.ensemble\
+          \ import IsolationForest\n        from sklearn.preprocessing import StandardScaler\n\
+          \n    logging.basicConfig(level=logging.INFO)\n    logger = logging.getLogger(__name__)\n\
+          \n    logger.info(f\"Starting {algorithm_type} training\")\n\n    try:\n\
+          \        # Load datasets\n        train_df = pd.read_parquet(train_dataset.path)\n\
+          \        val_df = pd.read_parquet(validation_dataset.path)\n\n        logger.info(f\"\
+          Loaded training data: {train_df.shape}\")\n        logger.info(f\"Loaded\
+          \ validation data: {val_df.shape}\")\n\n        # Define base features\n\
+          \        base_features = [\n            'cpu_utilization', 'memory_utilization',\
+          \ 'load_1min', 'load_5min',\n            'pod_count', 'disk_usage_percent',\
+          \ 'hour', 'day_of_week', 'is_business_hours',\n            'resource_pressure',\
+          \ 'load_efficiency', 'memory_pressure_ratio',\n            'cpu_1h_avg',\
+          \ 'memory_1h_avg', 'load_1h_avg', 'cpu_trend', 'memory_trend',\n       \
+          \     'cpu_volatility', 'load_volatility'\n        ]\n\n        # Algorithm-specific\
+          \ training\n        if algorithm_type == 'xgboost':\n            logger.info(\"\
+          Training XGBoost Le Proph\xE8te for future prediction\")\n\n           \
+          \ # Features and targets for XGBoost\n            X_train = train_df[base_features]\n\
+          \            X_val = val_df[base_features]\n\n            # Train separate\
+          \ models for CPU and Memory prediction\n            models = {}\n      \
+          \      metrics = {}\n\n            for target in ['cpu_target_1h', 'memory_target_1h']:\n\
+          \                y_train = train_df[target]\n                y_val = val_df[target]\n\
+          \n                # XGBoost model\n                model = xgb.XGBRegressor(\n\
+          \                    n_estimators=hyperparameters.get('n_estimators', 100),\n\
+          \                    max_depth=hyperparameters.get('max_depth', 6),\n  \
+          \                  learning_rate=hyperparameters.get('learning_rate', 0.1),\n\
+          \                    random_state=42\n                )\n\n            \
+          \    # Train model\n                model.fit(X_train, y_train)\n\n    \
+          \            # Predictions\n                train_pred = model.predict(X_train)\n\
+          \                val_pred = model.predict(X_val)\n\n                # Metrics\n\
+          \                from sklearn.metrics import mean_squared_error, r2_score,\
+          \ mean_absolute_error\n                train_rmse = np.sqrt(mean_squared_error(y_train,\
+          \ train_pred))\n                val_rmse = np.sqrt(mean_squared_error(y_val,\
+          \ val_pred))\n                train_r2 = r2_score(y_train, train_pred)\n\
+          \                val_r2 = r2_score(y_val, val_pred)\n                val_mae\
+          \ = mean_absolute_error(y_val, val_pred)\n\n                models[target]\
+          \ = model\n                metrics[target] = {\n                    'train_rmse':\
+          \ train_rmse,\n                    'val_rmse': val_rmse,\n             \
+          \       'train_r2': train_r2,\n                    'val_r2': val_r2,\n \
+          \                   'val_mae': val_mae\n                }\n\n          \
+          \      logger.info(f\"{target} - Val R2: {val_r2:.3f}, Val RMSE: {val_rmse:.3f}\"\
+          )\n\n            # Business score calculation\n            avg_r2 = np.mean([m['val_r2']\
+          \ for m in metrics.values()])\n            business_score = min(100, max(0,\
+          \ avg_r2 * 100))\n\n            model_metrics_dict = {\n               \
+          \ 'algorithm': 'XGBoost',\n                'expert_name': 'Le Proph\xE8\
+          te',\n                'cpu_model_metrics': metrics['cpu_target_1h'],\n \
+          \               'memory_model_metrics': metrics['memory_target_1h'],\n \
+          \               'average_r2_score': avg_r2,\n                'business_score':\
+          \ business_score,\n                'training_time': datetime.now().isoformat()\n\
+          \            }\n\n        elif algorithm_type == 'qlearning':\n        \
+          \    logger.info(\"Training Q-Learning L'Optimiseur for optimal placement\"\
+          )\n\n            # Simplified Q-Learning simulation using classification\n\
+          \            from sklearn.ensemble import RandomForestClassifier\n     \
+          \       from sklearn.metrics import accuracy_score, classification_report\n\
+          \n            X_train = train_df[base_features]\n            X_val = val_df[base_features]\n\
+          \            y_train = train_df['placement_optimal']\n            y_val\
+          \ = val_df['placement_optimal']\n\n            # Use Random Forest as Q-Learning\
+          \ approximator for demo\n            model = RandomForestClassifier(\n \
+          \               n_estimators=hyperparameters.get('n_estimators', 100),\n\
+          \                max_depth=hyperparameters.get('max_depth', 10),\n     \
+          \           random_state=42\n            )\n\n            model.fit(X_train,\
+          \ y_train)\n\n            # Predictions\n            train_pred = model.predict(X_train)\n\
+          \            val_pred = model.predict(X_val)\n            train_pred_proba\
+          \ = model.predict_proba(X_train)[:, 1]\n            val_pred_proba = model.predict_proba(X_val)[:,\
+          \ 1]\n\n            # Metrics\n            train_acc = accuracy_score(y_train,\
+          \ train_pred)\n            val_acc = accuracy_score(y_val, val_pred)\n\n\
+          \            # Simulate improvement vs random baseline\n            random_accuracy\
+          \ = 0.5  # Random placement\n            improvement = (val_acc - random_accuracy)\
+          \ / random_accuracy * 100\n\n            models = {'qlearning_classifier':\
+          \ model}\n            business_score = min(100, max(0, improvement * 5))\
+          \  # Scale to 100\n\n            model_metrics_dict = {\n              \
+          \  'algorithm': 'Q-Learning',\n                'expert_name': \"L'Optimiseur\"\
+          ,\n                'train_accuracy': train_acc,\n                'val_accuracy':\
+          \ val_acc,\n                'improvement_vs_random': improvement,\n    \
+          \            'business_score': business_score,\n                'training_time':\
+          \ datetime.now().isoformat()\n            }\n\n        elif algorithm_type\
+          \ == 'isolation':\n            logger.info(\"Training Isolation Forest Le\
+          \ D\xE9tective for anomaly detection\")\n\n            X_train = train_df[base_features]\n\
+          \            X_val = val_df[base_features]\n            y_val = val_df['is_anomaly']\
+          \  # Only for validation\n\n            # Isolation Forest (unsupervised)\n\
+          \            scaler = StandardScaler()\n            X_train_scaled = scaler.fit_transform(X_train)\n\
+          \            X_val_scaled = scaler.transform(X_val)\n\n            model\
+          \ = IsolationForest(\n                n_estimators=hyperparameters.get('n_estimators',\
+          \ 100),\n                contamination=hyperparameters.get('contamination',\
+          \ 0.1),\n                random_state=42\n            )\n\n            model.fit(X_train_scaled)\n\
+          \n            # Predictions (anomaly detection)\n            val_pred =\
+          \ model.predict(X_val_scaled)\n            val_pred_binary = (val_pred ==\
+          \ -1).astype(int)  # -1 = anomaly\n\n            # Metrics\n           \
+          \ from sklearn.metrics import precision_score, recall_score, f1_score\n\
+          \            precision = precision_score(y_val, val_pred_binary, zero_division=0)\n\
+          \            recall = recall_score(y_val, val_pred_binary, zero_division=0)\n\
+          \            f1 = f1_score(y_val, val_pred_binary, zero_division=0)\n\n\
+          \            # Anomaly detection rate\n            anomaly_rate = np.sum(val_pred_binary)\
+          \ / len(val_pred_binary)\n\n            models = {'isolation_forest': model,\
+          \ 'scaler': scaler}\n            business_score = min(100, max(0, f1 * 100))\n\
+          \n            model_metrics_dict = {\n                'algorithm': 'Isolation\
+          \ Forest',\n                'expert_name': 'Le D\xE9tective',\n        \
+          \        'precision': precision,\n                'recall': recall,\n  \
+          \              'f1_score': f1,\n                'anomaly_detection_rate':\
+          \ anomaly_rate,\n                'business_score': business_score,\n   \
+          \             'training_time': datetime.now().isoformat()\n            }\n\
+          \n        # Save trained model\n        joblib.dump(models, trained_model.path)\n\
+          \n        # Save metrics\n        with open(model_metrics.path, 'w') as\
+          \ f:\n            json.dump(model_metrics_dict, f, indent=2, default=str)\n\
+          \n        # Save training artifacts\n        artifacts = {\n           \
+          \ 'algorithm_type': algorithm_type,\n            'hyperparameters': hyperparameters,\n\
+          \            'feature_names': base_features,\n            'model_type':\
+          \ type(list(models.values())[0]).__name__,\n            'training_samples':\
+          \ len(train_df),\n            'validation_samples': len(val_df),\n     \
+          \       'business_score': business_score\n        }\n\n        with open(training_artifacts.path,\
+          \ 'w') as f:\n            json.dump(artifacts, f, indent=2)\n\n        logger.info(f\"\
+          {algorithm_type} training completed - Business score: {business_score:.1f}/100\"\
+          )\n\n    except Exception as e:\n        logger.error(f\"{algorithm_type}\
+          \ training failed: {e}\")\n        error_metrics = {\n            'algorithm':\
+          \ algorithm_type,\n            'training_success': False,\n            'error':\
+          \ str(e),\n            'training_time': datetime.now().isoformat()\n   \
+          \     }\n        with open(model_metrics.path, 'w') as f:\n            json.dump(error_metrics,\
+          \ f, indent=2)\n        raise\n\n"
+        image: python:3.10-slim
+    exec-trio-validation-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - trio_validation_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'kfp==2.8.0'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"'  &&\
+          \  python3 -m pip install --quiet --no-warn-script-location 'pandas==2.0.3'\
+          \ 'numpy==1.24.3' 'scikit-learn==1.3.0' 'mlflow==2.7.1' 'requests==2.31.0'\
+          \ 'joblib==1.3.2' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\nfrom builtins import str\n\ndef trio_validation_component(\n    xgboost_model:\
+          \ Input[Model],\n    qlearning_model: Input[Model],\n    isolation_model:\
+          \ Input[Model],\n    validation_dataset: Input[Dataset],\n    performance_thresholds:\
+          \ dict,\n    validation_report: Output[Metrics],\n    integration_score:\
+          \ Output[Metrics],\n    validated_models: Output[Artifact],\n    go_no_go_decision:\
+          \ Output[str]\n):\n    \"\"\"\n    Component 4: Trio Validation - Tests\
+          \ int\xE9gration et performance\n    Validation compl\xE8te du trio d'experts\
+          \ avec fusion logic\n\n    Args:\n        xgboost_model: Mod\xE8le XGBoost\
+          \ entra\xEEn\xE9\n        qlearning_model: Mod\xE8le Q-Learning entra\xEE\
+          n\xE9\n        isolation_model: Mod\xE8le Isolation Forest entra\xEEn\xE9\
+          \n        validation_dataset: Dataset de validation\n        performance_thresholds:\
+          \ Seuils de performance requis\n        validation_report: Rapport de validation\n\
+          \        integration_score: Score d'int\xE9gration trio\n        validated_models:\
+          \ Mod\xE8les valid\xE9s pour d\xE9ploiement\n        go_no_go_decision:\
+          \ D\xE9cision GO/NO-GO pour d\xE9ploiement\n    \"\"\"\n    import pandas\
+          \ as pd\n    import numpy as np\n    import joblib\n    import json\n  \
+          \  from datetime import datetime\n    import logging\n    import os\n  \
+          \  import shutil\n\n    logging.basicConfig(level=logging.INFO)\n    logger\
+          \ = logging.getLogger(__name__)\n\n    logger.info(\"Starting trio validation\
+          \ and integration testing\")\n\n    try:\n        # Load validation dataset\n\
+          \        val_df = pd.read_parquet(validation_dataset.path)\n        logger.info(f\"\
+          Loaded validation dataset: {val_df.shape}\")\n\n        # Load trained models\n\
+          \        xgb_models = joblib.load(xgboost_model.path)\n        qlearn_models\
+          \ = joblib.load(qlearning_model.path)\n        isolation_models = joblib.load(isolation_model.path)\n\
+          \n        logger.info(\"Loaded all three expert models\")\n\n        # Define\
+          \ features\n        base_features = [\n            'cpu_utilization', 'memory_utilization',\
+          \ 'load_1min', 'load_5min',\n            'pod_count', 'disk_usage_percent',\
+          \ 'hour', 'day_of_week', 'is_business_hours',\n            'resource_pressure',\
+          \ 'load_efficiency', 'memory_pressure_ratio',\n            'cpu_1h_avg',\
+          \ 'memory_1h_avg', 'load_1h_avg', 'cpu_trend', 'memory_trend',\n       \
+          \     'cpu_volatility', 'load_volatility'\n        ]\n\n        X_val =\
+          \ val_df[base_features]\n\n        # Individual model validation\n     \
+          \   individual_scores = {}\n\n        # XGBoost validation\n        logger.info(\"\
+          Validating XGBoost Le Proph\xE8te...\")\n        from sklearn.metrics import\
+          \ r2_score, mean_squared_error\n\n        xgb_scores = {}\n        for target\
+          \ in ['cpu_target_1h', 'memory_target_1h']:\n            if target in val_df.columns:\n\
+          \                y_true = val_df[target]\n                y_pred = xgb_models[target].predict(X_val)\n\
+          \                r2 = r2_score(y_true, y_pred)\n                rmse = np.sqrt(mean_squared_error(y_true,\
+          \ y_pred))\n                xgb_scores[target] = {'r2': r2, 'rmse': rmse}\n\
+          \n        xgb_avg_r2 = np.mean([s['r2'] for s in xgb_scores.values()])\n\
+          \        individual_scores['xgboost'] = {\n            'average_r2': xgb_avg_r2,\n\
+          \            'business_score': min(100, max(0, xgb_avg_r2 * 100)),\n   \
+          \         'meets_threshold': xgb_avg_r2 >= performance_thresholds.get('xgboost_accuracy',\
+          \ 0.85)\n        }\n\n        # Q-Learning validation\n        logger.info(\"\
+          Validating Q-Learning L'Optimiseur...\")\n        from sklearn.metrics import\
+          \ accuracy_score\n\n        if 'placement_optimal' in val_df.columns:\n\
+          \            y_true = val_df['placement_optimal']\n            y_pred =\
+          \ qlearn_models['qlearning_classifier'].predict(X_val)\n            accuracy\
+          \ = accuracy_score(y_true, y_pred)\n            improvement = (accuracy\
+          \ - 0.5) / 0.5 * 100  # vs random\n\n            individual_scores['qlearning']\
+          \ = {\n                'accuracy': accuracy,\n                'improvement_vs_random':\
+          \ improvement,\n                'business_score': min(100, max(0, improvement\
+          \ * 5)),\n                'meets_threshold': improvement >= performance_thresholds.get('qlearning_improvement',\
+          \ 0.15) * 100\n            }\n\n        # Isolation Forest validation\n\
+          \        logger.info(\"Validating Isolation Forest Le D\xE9tective...\"\
+          )\n        from sklearn.metrics import precision_score, recall_score, f1_score\n\
+          \n        if 'is_anomaly' in val_df.columns:\n            X_val_scaled =\
+          \ isolation_models['scaler'].transform(X_val)\n            y_true = val_df['is_anomaly']\n\
+          \            y_pred_raw = isolation_models['isolation_forest'].predict(X_val_scaled)\n\
+          \            y_pred = (y_pred_raw == -1).astype(int)\n\n            precision\
+          \ = precision_score(y_true, y_pred, zero_division=0)\n            recall\
+          \ = recall_score(y_true, y_pred, zero_division=0)\n            f1 = f1_score(y_true,\
+          \ y_pred, zero_division=0)\n            detection_rate = recall\n\n    \
+          \        individual_scores['isolation'] = {\n                'precision':\
+          \ precision,\n                'recall': recall,\n                'f1_score':\
+          \ f1,\n                'detection_rate': detection_rate,\n             \
+          \   'business_score': min(100, max(0, f1 * 100)),\n                'meets_threshold':\
+          \ detection_rate >= performance_thresholds.get('isolation_detection_rate',\
+          \ 0.85)\n            }\n\n        # Integration testing - Trio fusion logic\n\
+          \        logger.info(\"Testing trio integration and fusion logic...\")\n\
+          \n        # Simulate trio decision fusion for sample scenarios\n       \
+          \ test_scenarios = []\n        fusion_results = []\n\n        for i in range(min(100,\
+          \ len(val_df))):  # Test on 100 samples\n            scenario = val_df.iloc[i]\n\
+          \            features = scenario[base_features].values.reshape(1, -1)\n\n\
+          \            # XGBoost predictions (future load)\n            cpu_pred =\
+          \ xgb_models['cpu_target_1h'].predict(features)[0] if 'cpu_target_1h' in\
+          \ xgb_models else scenario['cpu_utilization']\n            memory_pred =\
+          \ xgb_models['memory_target_1h'].predict(features)[0] if 'memory_target_1h'\
+          \ in xgb_models else scenario['memory_utilization']\n\n            # Q-Learning\
+          \ recommendation\n            placement_prob = qlearn_models['qlearning_classifier'].predict_proba(features)[0][1]\n\
+          \n            # Isolation Forest anomaly detection\n            features_scaled\
+          \ = isolation_models['scaler'].transform(features)\n            anomaly_score\
+          \ = isolation_models['isolation_forest'].decision_function(features_scaled)[0]\n\
+          \            is_anomaly = isolation_models['isolation_forest'].predict(features_scaled)[0]\
+          \ == -1\n\n            # Trio fusion logic\n            # Weight factors\n\
+          \            prediction_weight = 0.35\n            optimization_weight =\
+          \ 0.35\n            anomaly_weight = 0.30\n\n            # Safety score\
+          \ from predictions\n            safety_score = 1.0 - max(cpu_pred, memory_pred)\
+          \  # Lower future utilization = safer\n\n            # Optimization score\n\
+          \            optimization_score = placement_prob\n\n            # Anomaly\
+          \ safety score\n            anomaly_safety_score = 0.0 if is_anomaly else\
+          \ (1.0 + min(0, anomaly_score))\n\n            # Weighted fusion\n     \
+          \       fusion_score = (\n                safety_score * prediction_weight\
+          \ +\n                optimization_score * optimization_weight + \n     \
+          \           anomaly_safety_score * anomaly_weight\n            )\n\n   \
+          \         # Decision\n            decision = \"ACCEPT\" if fusion_score\
+          \ > 0.6 and not is_anomaly else \"REJECT\"\n\n            fusion_results.append({\n\
+          \                'fusion_score': fusion_score,\n                'decision':\
+          \ decision,\n                'cpu_prediction': cpu_pred,\n             \
+          \   'memory_prediction': memory_pred,\n                'placement_prob':\
+          \ placement_prob,\n                'anomaly_detected': is_anomaly,\n   \
+          \             'anomaly_score': anomaly_score\n            })\n\n       \
+          \ # Analyze fusion performance\n        accept_rate = sum(1 for r in fusion_results\
+          \ if r['decision'] == 'ACCEPT') / len(fusion_results)\n        avg_fusion_score\
+          \ = np.mean([r['fusion_score'] for r in fusion_results])\n        anomaly_veto_rate\
+          \ = sum(1 for r in fusion_results if r['anomaly_detected']) / len(fusion_results)\n\
+          \n        # Overall integration score\n        individual_business_scores\
+          \ = [s['business_score'] for s in individual_scores.values()]\n        avg_individual_score\
+          \ = np.mean(individual_business_scores)\n\n        # Trio integration bonus/penalty\n\
+          \        integration_bonus = 10 if len([s for s in individual_scores.values()\
+          \ if s['meets_threshold']]) >= 2 else -10\n        trio_integration_score\
+          \ = min(100, max(0, avg_individual_score + integration_bonus))\n\n     \
+          \   # GO/NO-GO decision\n        meets_threshold = trio_integration_score\
+          \ >= performance_thresholds.get('trio_integration_score', 75.0)\n      \
+          \  go_no_go = \"GO\" if meets_threshold else \"NO-GO\"\n\n        # Validation\
+          \ report\n        validation_report_dict = {\n            'validation_timestamp':\
+          \ datetime.now().isoformat(),\n            'individual_model_scores': individual_scores,\n\
+          \            'trio_integration': {\n                'fusion_test_samples':\
+          \ len(fusion_results),\n                'average_fusion_score': avg_fusion_score,\n\
+          \                'accept_rate': accept_rate,\n                'anomaly_veto_rate':\
+          \ anomaly_veto_rate\n            },\n            'overall_assessment': {\n\
+          \                'trio_integration_score': trio_integration_score,\n   \
+          \             'meets_performance_threshold': meets_threshold,\n        \
+          \        'models_meeting_threshold': len([s for s in individual_scores.values()\
+          \ if s['meets_threshold']]),\n                'go_no_go_decision': go_no_go\n\
+          \            },\n            'performance_thresholds': performance_thresholds\n\
+          \        }\n\n        with open(validation_report.path, 'w') as f:\n   \
+          \         json.dump(validation_report_dict, f, indent=2, default=str)\n\n\
+          \        # Integration score metrics\n        integration_score_dict = {\n\
+          \            'trio_integration_score': trio_integration_score,\n       \
+          \     'individual_scores': individual_business_scores,\n            'average_individual_score':\
+          \ avg_individual_score,\n            'integration_bonus': integration_bonus,\n\
+          \            'fusion_performance': {\n                'average_score': avg_fusion_score,\n\
+          \                'accept_rate': accept_rate,\n                'anomaly_protection':\
+          \ anomaly_veto_rate\n            }\n        }\n\n        with open(integration_score.path,\
+          \ 'w') as f:\n            json.dump(integration_score_dict, f, indent=2)\n\
+          \n        # Prepare validated models if GO decision\n        if go_no_go\
+          \ == \"GO\":\n            logger.info(\"Validation PASSED - Preparing models\
+          \ for deployment\")\n\n            # Create directory for validated models\n\
+          \            validated_models_dir = validated_models.path\n            os.makedirs(validated_models_dir,\
+          \ exist_ok=True)\n\n            # Copy model files\n            shutil.copy(xgboost_model.path,\
+          \ os.path.join(validated_models_dir, 'xgboost_model.pkl'))\n           \
+          \ shutil.copy(qlearning_model.path, os.path.join(validated_models_dir, 'qlearning_model.pkl'))\n\
+          \            shutil.copy(isolation_model.path, os.path.join(validated_models_dir,\
+          \ 'isolation_model.pkl'))\n\n            # Create deployment manifest\n\
+          \            deployment_manifest = {\n                'validation_passed':\
+          \ True,\n                'validation_timestamp': datetime.now().isoformat(),\n\
+          \                'trio_integration_score': trio_integration_score,\n   \
+          \             'models': {\n                    'xgboost': 'xgboost_model.pkl',\n\
+          \                    'qlearning': 'qlearning_model.pkl',\n             \
+          \       'isolation': 'isolation_model.pkl'\n                },\n       \
+          \         'deployment_ready': True\n            }\n\n            with open(os.path.join(validated_models_dir,\
+          \ 'deployment_manifest.json'), 'w') as f:\n                json.dump(deployment_manifest,\
+          \ f, indent=2)\n        else:\n            logger.warning(\"Validation FAILED\
+          \ - Models not ready for deployment\")\n            os.makedirs(validated_models.path,\
+          \ exist_ok=True)\n            failure_report = {\n                'validation_passed':\
+          \ False,\n                'trio_integration_score': trio_integration_score,\n\
+          \                'required_threshold': performance_thresholds.get('trio_integration_score',\
+          \ 75.0),\n                'deployment_ready': False\n            }\n   \
+          \         with open(os.path.join(validated_models.path, 'validation_failure.json'),\
+          \ 'w') as f:\n                json.dump(failure_report, f, indent=2)\n\n\
+          \        # Set GO/NO-GO decision output\n        with open(go_no_go_decision.path,\
+          \ 'w') as f:\n            f.write(go_no_go)\n\n        logger.info(f\"Trio\
+          \ validation completed - Decision: {go_no_go}\")\n        logger.info(f\"\
+          Integration score: {trio_integration_score:.1f}/100\")\n\n    except Exception\
+          \ as e:\n        logger.error(f\"Trio validation failed: {e}\")\n\n    \
+          \    # Error report\n        error_report = {\n            'validation_success':\
+          \ False,\n            'error': str(e),\n            'timestamp': datetime.now().isoformat()\n\
+          \        }\n\n        with open(validation_report.path, 'w') as f:\n   \
+          \         json.dump(error_report, f, indent=2)\n\n        with open(go_no_go_decision.path,\
+          \ 'w') as f:\n            f.write(\"NO-GO\")\n\n        raise\n\n"
+        image: python:3.10-slim
+pipelineInfo:
+  description: ML-Scheduler Trio AI Training & Deployment Pipeline
+  name: ml-scheduler-training-pipeline
+root:
+  dag:
+    outputs:
+      artifacts:
+        data-collection-component-quality_report:
+          artifactSelectors:
+          - outputArtifactKey: quality_report
+            producerSubtask: data-collection-component
+        kserve-deployment-component-deployment_status:
+          artifactSelectors:
+          - outputArtifactKey: kserve-deployment-component-deployment_status
+            producerSubtask: condition-1
+        kserve-deployment-component-health_check_results:
+          artifactSelectors:
+          - outputArtifactKey: kserve-deployment-component-health_check_results
+            producerSubtask: condition-1
+        preprocessing-component-preprocessing_metrics:
+          artifactSelectors:
+          - outputArtifactKey: preprocessing_metrics
+            producerSubtask: preprocessing-component
+        trio-training-component-2-model_metrics:
+          artifactSelectors:
+          - outputArtifactKey: model_metrics
+            producerSubtask: trio-training-component-2
+        trio-training-component-3-model_metrics:
+          artifactSelectors:
+          - outputArtifactKey: model_metrics
+            producerSubtask: trio-training-component-3
+        trio-training-component-model_metrics:
+          artifactSelectors:
+          - outputArtifactKey: model_metrics
+            producerSubtask: trio-training-component
+        trio-validation-component-integration_score:
+          artifactSelectors:
+          - outputArtifactKey: integration_score
+            producerSubtask: trio-validation-component
+        trio-validation-component-validation_report:
+          artifactSelectors:
+          - outputArtifactKey: validation_report
+            producerSubtask: trio-validation-component
+    tasks:
+      condition-1:
+        componentRef:
+          name: comp-condition-1
+        dependentTasks:
+        - trio-validation-component
+        inputs:
+          artifacts:
+            pipelinechannel--trio-validation-component-validated_models:
+              taskOutputArtifact:
+                outputArtifactKey: validated_models
+                producerTask: trio-validation-component
+          parameters:
+            pipelinechannel--deployment_config:
+              componentInputParameter: deployment_config
+            pipelinechannel--kserve_namespace:
+              componentInputParameter: kserve_namespace
+            pipelinechannel--trio-validation-component-go_no_go_decision:
+              taskOutputParameter:
+                outputParameterKey: go_no_go_decision
+                producerTask: trio-validation-component
+        taskInfo:
+          name: deployment_condition
+        triggerPolicy:
+          condition: inputs.parameter_values['pipelinechannel--trio-validation-component-go_no_go_decision']
+            == 'GO'
+      data-collection-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-collection-component
+        inputs:
+          parameters:
+            collection_period_days:
+              componentInputParameter: collection_period_days
+            metrics_list:
+              componentInputParameter: metrics_list
+            prometheus_endpoint:
+              componentInputParameter: prometheus_endpoint
+        taskInfo:
+          name: data-collection-component
+      preprocessing-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-preprocessing-component
+        dependentTasks:
+        - data-collection-component
+        inputs:
+          artifacts:
+            raw_dataset:
+              taskOutputArtifact:
+                outputArtifactKey: raw_dataset
+                producerTask: data-collection-component
+          parameters:
+            validation_split:
+              componentInputParameter: validation_split
+        taskInfo:
+          name: preprocessing-component
+      trio-training-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-trio-training-component
+        dependentTasks:
+        - preprocessing-component
+        inputs:
+          artifacts:
+            train_dataset:
+              taskOutputArtifact:
+                outputArtifactKey: train_dataset
+                producerTask: preprocessing-component
+            validation_dataset:
+              taskOutputArtifact:
+                outputArtifactKey: validation_dataset
+                producerTask: preprocessing-component
+          parameters:
+            algorithm_type:
+              runtimeValue:
+                constant: xgboost
+            hyperparameters:
+              componentInputParameter: xgboost_hyperparameters
+            mlflow_tracking_uri:
+              componentInputParameter: mlflow_tracking_uri
+        taskInfo:
+          name: trio-training-component
+      trio-training-component-2:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-trio-training-component-2
+        dependentTasks:
+        - preprocessing-component
+        inputs:
+          artifacts:
+            train_dataset:
+              taskOutputArtifact:
+                outputArtifactKey: train_dataset
+                producerTask: preprocessing-component
+            validation_dataset:
+              taskOutputArtifact:
+                outputArtifactKey: validation_dataset
+                producerTask: preprocessing-component
+          parameters:
+            algorithm_type:
+              runtimeValue:
+                constant: qlearning
+            hyperparameters:
+              componentInputParameter: qlearning_hyperparameters
+            mlflow_tracking_uri:
+              componentInputParameter: mlflow_tracking_uri
+        taskInfo:
+          name: trio-training-component-2
+      trio-training-component-3:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-trio-training-component-3
+        dependentTasks:
+        - preprocessing-component
+        inputs:
+          artifacts:
+            train_dataset:
+              taskOutputArtifact:
+                outputArtifactKey: train_dataset
+                producerTask: preprocessing-component
+            validation_dataset:
+              taskOutputArtifact:
+                outputArtifactKey: validation_dataset
+                producerTask: preprocessing-component
+          parameters:
+            algorithm_type:
+              runtimeValue:
+                constant: isolation
+            hyperparameters:
+              componentInputParameter: isolation_hyperparameters
+            mlflow_tracking_uri:
+              componentInputParameter: mlflow_tracking_uri
+        taskInfo:
+          name: trio-training-component-3
+      trio-validation-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-trio-validation-component
+        dependentTasks:
+        - preprocessing-component
+        - trio-training-component
+        - trio-training-component-2
+        - trio-training-component-3
+        inputs:
+          artifacts:
+            isolation_model:
+              taskOutputArtifact:
+                outputArtifactKey: trained_model
+                producerTask: trio-training-component-3
+            qlearning_model:
+              taskOutputArtifact:
+                outputArtifactKey: trained_model
+                producerTask: trio-training-component-2
+            validation_dataset:
+              taskOutputArtifact:
+                outputArtifactKey: validation_dataset
+                producerTask: preprocessing-component
+            xgboost_model:
+              taskOutputArtifact:
+                outputArtifactKey: trained_model
+                producerTask: trio-training-component
+          parameters:
+            performance_thresholds:
+              componentInputParameter: performance_thresholds
+        taskInfo:
+          name: trio-validation-component
+  inputDefinitions:
+    parameters:
+      auto_deployment:
+        defaultValue: true
+        description: Enable automatic deployment
+        isOptional: true
+        parameterType: BOOLEAN
+      collection_period_days:
+        defaultValue: 30.0
+        description: Historical data period
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      deployment_config:
+        description: Deployment resource configuration
+        isOptional: true
+        parameterType: STRUCT
+      isolation_hyperparameters:
+        description: Isolation Forest hyperparameters
+        isOptional: true
+        parameterType: STRUCT
+      kserve_namespace:
+        defaultValue: ml-scheduler
+        description: Kubernetes namespace for deployment
+        isOptional: true
+        parameterType: STRING
+      metrics_list:
+        description: List of Prometheus metrics to collect
+        isOptional: true
+        parameterType: LIST
+      mlflow_tracking_uri:
+        defaultValue: http://mlflow.kubeflow.svc.cluster.local:5000
+        description: MLflow server URL
+        isOptional: true
+        parameterType: STRING
+      performance_thresholds:
+        description: Validation thresholds
+        isOptional: true
+        parameterType: STRUCT
+      prometheus_endpoint:
+        defaultValue: http://prometheus.monitoring.svc.cluster.local:9090
+        description: Prometheus server URL
+        isOptional: true
+        parameterType: STRING
+      qlearning_hyperparameters:
+        description: 'Q-Learning hyperparameters  '
+        isOptional: true
+        parameterType: STRUCT
+      rollback_enabled:
+        defaultValue: true
+        description: Enable rollback on failure
+        isOptional: true
+        parameterType: BOOLEAN
+      validation_split:
+        defaultValue: 0.2
+        description: Train/validation split ratio
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      xgboost_hyperparameters:
+        description: XGBoost hyperparameters
+        isOptional: true
+        parameterType: STRUCT
+  outputDefinitions:
+    artifacts:
+      data-collection-component-quality_report:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+      kserve-deployment-component-deployment_status:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+      kserve-deployment-component-health_check_results:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+      preprocessing-component-preprocessing_metrics:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+      trio-training-component-2-model_metrics:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+      trio-training-component-3-model_metrics:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+      trio-training-component-model_metrics:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+      trio-validation-component-integration_score:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+      trio-validation-component-validation_report:
+        artifactType:
+          schemaTitle: system.Metrics
+          schemaVersion: 0.0.1
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.8.0

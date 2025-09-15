@@ -1,0 +1,87 @@
+alert_channels:
+  email:
+    enabled: true
+    recipients:
+    - ml-team@company.com
+    - platform-team@company.com
+    severity_levels:
+    - medium
+    - high
+    - critical
+    smtp_server: smtp.company.com
+  pagerduty:
+    enabled: true
+    integration_key: your-pagerduty-integration-key
+    severity_levels:
+    - critical
+  slack:
+    channel: '#ml-scheduler-alerts'
+    enabled: true
+    severity_levels:
+    - high
+    - critical
+    webhook_url: https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX
+alert_rules:
+- channels:
+  - slack
+  - email
+  condition: ml_scheduler_pipeline_success_rate < 0.8
+  description: ML-Scheduler pipeline success rate below 80%
+  duration: 5m
+  name: ML-Scheduler Pipeline Failed
+  runbook_url: https://wiki.company.com/ml-scheduler-troubleshooting
+  severity: high
+- channels:
+  - slack
+  condition: ml_scheduler_pipeline_duration_seconds > 7200
+  description: Pipeline execution taking longer than 2 hours
+  duration: 1m
+  name: Pipeline Execution Too Long
+  severity: medium
+- channels:
+  - slack
+  - email
+  condition: ml_scheduler_model_performance{metric_type="business_score"} < 75
+  description: Model performance below business threshold
+  duration: 1m
+  name: Model Performance Degradation
+  severity: high
+- channels:
+  - slack
+  condition: ml_scheduler_data_completeness < 0.95
+  description: Data quality issues detected
+  duration: 10m
+  name: Data Quality Issues
+  severity: medium
+- channels:
+  - slack
+  - email
+  - pagerduty
+  condition: ml_scheduler_pipeline_memory_usage > 0.95
+  description: Pipeline consuming too much memory
+  duration: 2m
+  name: Pipeline Resource Exhaustion
+  severity: critical
+escalation_policies:
+  critical_escalation:
+    levels:
+    - contacts:
+      - oncall-sre@company.com
+      duration: 2m
+    - contacts:
+      - platform-lead@company.com
+      duration: 10m
+    - contacts:
+      - cto@company.com
+      duration: 20m
+  ml_team_escalation:
+    levels:
+    - contacts:
+      - ml-team@company.com
+      duration: 5m
+    - contacts:
+      - ml-lead@company.com
+      duration: 15m
+    - contacts:
+      - platform-team@company.com
+      duration: 30m

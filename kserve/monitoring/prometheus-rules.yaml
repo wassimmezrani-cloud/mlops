@@ -1,0 +1,237 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ml-scheduler-kserve-rules
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: monitoring
+    prometheus: kube-prometheus
+spec:
+  groups:
+  - name: ml-scheduler-performance
+    interval: 30s
+    rules:
+    # XGBoost Predictor Metrics
+    - alert: XGBoostHighLatency
+      expr: histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service_name="xgboost-load-predictor"}[5m])) > 75
+      for: 2m
+      labels:
+        severity: warning
+        service: xgboost-predictor
+        expert: le-prophete
+      annotations:
+        summary: "XGBoost predictor latency too high"
+        description: "P99 latency for XGBoost predictor is {{ $value }}ms, exceeding 75ms threshold for {{ $labels.destination_service_name }}"
+        
+    - alert: XGBoostLowThroughput
+      expr: rate(istio_requests_total{destination_service_name="xgboost-load-predictor",response_code="200"}[5m]) < 8.33  # 500 RPS / 60 = 8.33 requests per second
+      for: 3m
+      labels:
+        severity: warning
+        service: xgboost-predictor
+        expert: le-prophete
+      annotations:
+        summary: "XGBoost predictor throughput too low"
+        description: "Throughput for XGBoost predictor is {{ $value }} RPS, below 500 RPS threshold"
+        
+    - alert: XGBoostHighErrorRate
+      expr: rate(istio_requests_total{destination_service_name="xgboost-load-predictor",response_code!="200"}[5m]) / rate(istio_requests_total{destination_service_name="xgboost-load-predictor"}[5m]) > 0.001
+      for: 1m
+      labels:
+        severity: critical
+        service: xgboost-predictor
+        expert: le-prophete
+      annotations:
+        summary: "XGBoost predictor error rate too high"
+        description: "Error rate for XGBoost predictor is {{ $value | humanizePercentage }}, exceeding 0.1% threshold"
+        
+    # Q-Learning Optimizer Metrics
+    - alert: QLearningHighLatency
+      expr: histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service_name="qlearning-placement-optimizer"}[5m])) > 100
+      for: 2m
+      labels:
+        severity: warning
+        service: qlearning-optimizer
+        expert: l-optimiseur
+      annotations:
+        summary: "Q-Learning optimizer latency too high"
+        description: "P99 latency for Q-Learning optimizer is {{ $value }}ms, exceeding 100ms threshold for {{ $labels.destination_service_name }}"
+        
+    - alert: QLearningLowThroughput
+      expr: rate(istio_requests_total{destination_service_name="qlearning-placement-optimizer",response_code="200"}[5m]) < 5.0  # 300 RPS / 60 = 5 requests per second
+      for: 3m
+      labels:
+        severity: warning
+        service: qlearning-optimizer
+        expert: l-optimiseur
+      annotations:
+        summary: "Q-Learning optimizer throughput too low"
+        description: "Throughput for Q-Learning optimizer is {{ $value }} RPS, below 300 RPS threshold"
+        
+    - alert: QLearningHighErrorRate
+      expr: rate(istio_requests_total{destination_service_name="qlearning-placement-optimizer",response_code!="200"}[5m]) / rate(istio_requests_total{destination_service_name="qlearning-placement-optimizer"}[5m]) > 0.001
+      for: 1m
+      labels:
+        severity: critical
+        service: qlearning-optimizer
+        expert: l-optimiseur
+      annotations:
+        summary: "Q-Learning optimizer error rate too high"
+        description: "Error rate for Q-Learning optimizer is {{ $value | humanizePercentage }}, exceeding 0.1% threshold"
+        
+    # Isolation Forest Detector Metrics
+    - alert: IsolationDetectorHighLatency
+      expr: histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket{destination_service_name="isolation-anomaly-detector"}[5m])) > 50
+      for: 2m
+      labels:
+        severity: warning
+        service: isolation-detector
+        expert: le-detective
+      annotations:
+        summary: "Isolation detector latency too high"
+        description: "P99 latency for Isolation detector is {{ $value }}ms, exceeding 50ms threshold for {{ $labels.destination_service_name }}"
+        
+    - alert: IsolationDetectorLowThroughput
+      expr: rate(istio_requests_total{destination_service_name="isolation-anomaly-detector",response_code="200"}[5m]) < 3.33  # 200 RPS / 60 = 3.33 requests per second
+      for: 3m
+      labels:
+        severity: warning
+        service: isolation-detector
+        expert: le-detective
+      annotations:
+        summary: "Isolation detector throughput too low"
+        description: "Throughput for Isolation detector is {{ $value }} RPS, below 200 RPS threshold"
+        
+    - alert: IsolationDetectorHighErrorRate
+      expr: rate(istio_requests_total{destination_service_name="isolation-anomaly-detector",response_code!="200"}[5m]) / rate(istio_requests_total{destination_service_name="isolation-anomaly-detector"}[5m]) > 0.001
+      for: 1m
+      labels:
+        severity: critical
+        service: isolation-detector
+        expert: le-detective
+      annotations:
+        summary: "Isolation detector error rate too high"
+        description: "Error rate for Isolation detector is {{ $value | humanizePercentage }}, exceeding 0.1% threshold"
+        
+  - name: ml-scheduler-availability
+    interval: 30s
+    rules:
+    # Service Availability
+    - alert: MLSchedulerServiceDown
+      expr: up{job=~".*ml-scheduler.*"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        component: service-availability
+      annotations:
+        summary: "ML-Scheduler service is down"
+        description: "Service {{ $labels.job }} has been down for more than 1 minute"
+        
+    - alert: MLSchedulerPodCrashLooping
+      expr: rate(kube_pod_container_status_restarts_total{namespace="ml-scheduler"}[5m]) > 0.1
+      for: 2m
+      labels:
+        severity: warning
+        component: pod-stability
+      annotations:
+        summary: "ML-Scheduler pod is crash looping"
+        description: "Pod {{ $labels.pod }} in namespace {{ $labels.namespace }} is restarting frequently"
+        
+    - alert: MLSchedulerPodNotReady
+      expr: kube_pod_status_ready{namespace="ml-scheduler",condition="true"} == 0
+      for: 5m
+      labels:
+        severity: warning
+        component: pod-readiness
+      annotations:
+        summary: "ML-Scheduler pod not ready"
+        description: "Pod {{ $labels.pod }} has been not ready for more than 5 minutes"
+        
+  - name: ml-scheduler-resources
+    interval: 30s
+    rules:
+    # Resource Usage
+    - alert: MLSchedulerHighCPUUsage
+      expr: rate(container_cpu_usage_seconds_total{namespace="ml-scheduler"}[5m]) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        component: resource-usage
+      annotations:
+        summary: "ML-Scheduler high CPU usage"
+        description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} CPU, exceeding 80% threshold"
+        
+    - alert: MLSchedulerHighMemoryUsage
+      expr: container_memory_usage_bytes{namespace="ml-scheduler"} / container_spec_memory_limit_bytes{namespace="ml-scheduler"} > 0.85
+      for: 5m
+      labels:
+        severity: warning
+        component: resource-usage
+      annotations:
+        summary: "ML-Scheduler high memory usage"
+        description: "Container {{ $labels.container }} is using {{ $value | humanizePercentage }} memory, exceeding 85% threshold"
+        
+    - alert: MLSchedulerOOMKill
+      expr: increase(container_oom_kills_total{namespace="ml-scheduler"}[5m]) > 0
+      for: 0m
+      labels:
+        severity: critical
+        component: resource-usage
+      annotations:
+        summary: "ML-Scheduler container OOM killed"
+        description: "Container {{ $labels.container }} has been OOM killed"
+        
+  - name: ml-scheduler-business-metrics
+    interval: 60s
+    rules:
+    # Business Impact Metrics
+    - record: ml_scheduler:prediction_accuracy_rate
+      expr: |
+        (
+          rate(ml_scheduler_predictions_correct_total[5m]) /
+          rate(ml_scheduler_predictions_total[5m])
+        ) * 100
+        
+    - record: ml_scheduler:decision_latency_p99
+      expr: |
+        histogram_quantile(0.99,
+          rate(ml_scheduler_decision_duration_seconds_bucket[5m])
+        ) * 1000
+        
+    - record: ml_scheduler:resource_optimization_rate
+      expr: |
+        (
+          (ml_scheduler_cluster_efficiency_before - ml_scheduler_cluster_efficiency_current) /
+          ml_scheduler_cluster_efficiency_before
+        ) * 100
+        
+    - alert: MLSchedulerPredictionAccuracyLow
+      expr: ml_scheduler:prediction_accuracy_rate < 90
+      for: 10m
+      labels:
+        severity: warning
+        component: business-impact
+      annotations:
+        summary: "ML-Scheduler prediction accuracy too low"
+        description: "Prediction accuracy is {{ $value }}%, below 90% threshold"
+        
+    - alert: MLSchedulerDecisionLatencyHigh
+      expr: ml_scheduler:decision_latency_p99 > 150
+      for: 5m
+      labels:
+        severity: warning
+        component: business-impact
+      annotations:
+        summary: "ML-Scheduler decision latency too high"
+        description: "P99 decision latency is {{ $value }}ms, exceeding 150ms threshold"
+        
+    - alert: MLSchedulerResourceOptimizationLow
+      expr: ml_scheduler:resource_optimization_rate < 25
+      for: 15m
+      labels:
+        severity: warning
+        component: business-impact
+      annotations:
+        summary: "ML-Scheduler resource optimization below target"
+        description: "Resource optimization is {{ $value }}%, below 25% target"

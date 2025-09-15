@@ -1,0 +1,374 @@
+{
+  "pipeline_metadata": {
+    "name": "ml-scheduler-training-pipeline",
+    "version": "1.0.0",
+    "description": "ML-Scheduler Trio AI Training & Deployment Pipeline",
+    "default_resources": {
+      "cpu_request": "2",
+      "cpu_limit": "4",
+      "memory_request": "4Gi",
+      "memory_limit": "8Gi"
+    },
+    "storage_config": {
+      "pvc_size": "20Gi",
+      "storage_class": "longhorn",
+      "access_mode": "ReadWriteMany"
+    }
+  },
+  "components_specifications": {
+    "data_collection": {
+      "name": "data-collection-component",
+      "description": "Collect historical metrics from Prometheus",
+      "base_image": "python:3.10-slim",
+      "packages": [
+        "prometheus-api-client",
+        "pandas",
+        "numpy"
+      ],
+      "inputs": {
+        "prometheus_config": "str",
+        "collection_period_days": "int",
+        "metrics_list": "list"
+      },
+      "outputs": {
+        "raw_dataset": "Dataset",
+        "quality_report": "Metrics",
+        "collection_metadata": "Artifact"
+      },
+      "resources": {
+        "cpu_request": "1",
+        "cpu_limit": "2",
+        "memory_request": "2Gi",
+        "memory_limit": "4Gi"
+      }
+    },
+    "preprocessing": {
+      "name": "preprocessing-component",
+      "description": "Data cleaning and feature engineering",
+      "base_image": "python:3.10-slim",
+      "packages": [
+        "pandas",
+        "numpy",
+        "scikit-learn",
+        "mlflow"
+      ],
+      "inputs": {
+        "raw_dataset": "Dataset",
+        "feature_config": "dict",
+        "validation_split": "float"
+      },
+      "outputs": {
+        "processed_dataset": "Dataset",
+        "train_dataset": "Dataset",
+        "validation_dataset": "Dataset",
+        "feature_metadata": "Artifact",
+        "preprocessing_metrics": "Metrics"
+      },
+      "resources": {
+        "cpu_request": "2",
+        "cpu_limit": "4",
+        "memory_request": "4Gi",
+        "memory_limit": "8Gi"
+      }
+    },
+    "trio_training": {
+      "name": "trio-training-component",
+      "description": "Parallel training of 3 AI experts",
+      "base_image": "python:3.10-slim",
+      "packages": [
+        "xgboost",
+        "scikit-learn",
+        "mlflow",
+        "joblib"
+      ],
+      "inputs": {
+        "train_dataset": "Dataset",
+        "validation_dataset": "Dataset",
+        "algorithm_type": "str",
+        "hyperparameters": "dict",
+        "mlflow_config": "dict"
+      },
+      "outputs": {
+        "trained_model": "Model",
+        "model_metrics": "Metrics",
+        "training_artifacts": "Artifact"
+      },
+      "resources": {
+        "cpu_request": "4",
+        "cpu_limit": "8",
+        "memory_request": "8Gi",
+        "memory_limit": "16Gi"
+      }
+    },
+    "trio_validation": {
+      "name": "trio-validation-component",
+      "description": "Integration testing and performance validation",
+      "base_image": "python:3.10-slim",
+      "packages": [
+        "requests",
+        "pandas",
+        "numpy",
+        "mlflow"
+      ],
+      "inputs": {
+        "xgboost_model": "Model",
+        "qlearning_model": "Model",
+        "isolation_model": "Model",
+        "validation_dataset": "Dataset",
+        "performance_thresholds": "dict"
+      },
+      "outputs": {
+        "validation_report": "Metrics",
+        "integration_score": "Metrics",
+        "validated_models": "Artifact",
+        "go_no_go_decision": "str"
+      },
+      "resources": {
+        "cpu_request": "2",
+        "cpu_limit": "4",
+        "memory_request": "4Gi",
+        "memory_limit": "8Gi"
+      }
+    },
+    "kserve_deployment": {
+      "name": "kserve-deployment-component",
+      "description": "Automated KServe deployment of validated models",
+      "base_image": "python:3.10-slim",
+      "packages": [
+        "kubernetes",
+        "requests",
+        "pyyaml"
+      ],
+      "inputs": {
+        "validated_models": "Artifact",
+        "deployment_config": "dict",
+        "kserve_namespace": "str"
+      },
+      "outputs": {
+        "deployment_status": "Metrics",
+        "service_endpoints": "Artifact",
+        "health_check_results": "Metrics"
+      },
+      "resources": {
+        "cpu_request": "1",
+        "cpu_limit": "2",
+        "memory_request": "2Gi",
+        "memory_limit": "4Gi"
+      }
+    }
+  },
+  "dag_structure": {
+    "pipeline_flow": [
+      {
+        "step": 1,
+        "component": "data_collection",
+        "dependencies": [],
+        "parallelizable": false,
+        "estimated_duration": "15-30 minutes"
+      },
+      {
+        "step": 2,
+        "component": "preprocessing",
+        "dependencies": [
+          "data_collection"
+        ],
+        "parallelizable": false,
+        "estimated_duration": "10-20 minutes"
+      },
+      {
+        "step": 3,
+        "component": "trio_training",
+        "dependencies": [
+          "preprocessing"
+        ],
+        "parallelizable": true,
+        "parallel_instances": 3,
+        "algorithms": [
+          "xgboost",
+          "qlearning",
+          "isolation"
+        ],
+        "estimated_duration": "20-45 minutes per algorithm"
+      },
+      {
+        "step": 4,
+        "component": "trio_validation",
+        "dependencies": [
+          "trio_training"
+        ],
+        "parallelizable": false,
+        "estimated_duration": "10-15 minutes"
+      },
+      {
+        "step": 5,
+        "component": "kserve_deployment",
+        "dependencies": [
+          "trio_validation"
+        ],
+        "parallelizable": false,
+        "conditional": true,
+        "condition": "validation_score > 75",
+        "estimated_duration": "5-10 minutes"
+      }
+    ],
+    "total_estimated_duration": "60-120 minutes",
+    "critical_path": [
+      "data_collection",
+      "preprocessing",
+      "trio_training (longest of 3)",
+      "trio_validation",
+      "kserve_deployment"
+    ]
+  },
+  "pipeline_parameters": {
+    "prometheus_endpoint": {
+      "type": "str",
+      "default": "http://prometheus.monitoring.svc.cluster.local:9090",
+      "description": "Prometheus server endpoint"
+    },
+    "collection_period_days": {
+      "type": "int",
+      "default": 30,
+      "description": "Historical data collection period"
+    },
+    "metrics_filter": {
+      "type": "list",
+      "default": [
+        "node_cpu_seconds_total",
+        "node_memory_MemAvailable_bytes",
+        "node_load1",
+        "kube_pod_info"
+      ],
+      "description": "Prometheus metrics to collect"
+    },
+    "validation_split": {
+      "type": "float",
+      "default": 0.2,
+      "description": "Validation dataset split ratio"
+    },
+    "mlflow_tracking_uri": {
+      "type": "str",
+      "default": "http://mlflow.kubeflow.svc.cluster.local:5000",
+      "description": "MLflow tracking server"
+    },
+    "model_registry_uri": {
+      "type": "str",
+      "default": "http://mlflow.kubeflow.svc.cluster.local:5000",
+      "description": "MLflow model registry"
+    },
+    "performance_thresholds": {
+      "type": "dict",
+      "default": {
+        "xgboost_accuracy": 0.85,
+        "qlearning_improvement": 0.15,
+        "isolation_detection_rate": 0.85,
+        "trio_integration_score": 75.0
+      },
+      "description": "Performance thresholds for validation"
+    },
+    "kserve_namespace": {
+      "type": "str",
+      "default": "ml-scheduler",
+      "description": "Kubernetes namespace for deployments"
+    },
+    "auto_deployment": {
+      "type": "bool",
+      "default": true,
+      "description": "Enable automatic deployment if validation passes"
+    },
+    "rollback_enabled": {
+      "type": "bool",
+      "default": true,
+      "description": "Enable automatic rollback on deployment failure"
+    }
+  },
+  "resource_configuration": {
+    "persistent_volumes": {
+      "shared_data_pvc": {
+        "size": "50Gi",
+        "storage_class": "longhorn",
+        "access_mode": "ReadWriteMany",
+        "mount_path": "/data"
+      },
+      "models_pvc": {
+        "size": "20Gi",
+        "storage_class": "longhorn",
+        "access_mode": "ReadWriteMany",
+        "mount_path": "/models"
+      },
+      "artifacts_pvc": {
+        "size": "10Gi",
+        "storage_class": "longhorn",
+        "access_mode": "ReadWriteMany",
+        "mount_path": "/artifacts"
+      }
+    },
+    "compute_resources": {
+      "data_collection": {
+        "cpu_request": "1000m",
+        "cpu_limit": "2000m",
+        "memory_request": "2Gi",
+        "memory_limit": "4Gi"
+      },
+      "preprocessing": {
+        "cpu_request": "2000m",
+        "cpu_limit": "4000m",
+        "memory_request": "4Gi",
+        "memory_limit": "8Gi"
+      },
+      "trio_training": {
+        "cpu_request": "4000m",
+        "cpu_limit": "8000m",
+        "memory_request": "8Gi",
+        "memory_limit": "16Gi"
+      },
+      "validation": {
+        "cpu_request": "2000m",
+        "cpu_limit": "4000m",
+        "memory_request": "4Gi",
+        "memory_limit": "8Gi"
+      },
+      "deployment": {
+        "cpu_request": "1000m",
+        "cpu_limit": "2000m",
+        "memory_request": "2Gi",
+        "memory_limit": "4Gi"
+      }
+    },
+    "node_selectors": {
+      "training_nodes": {
+        "node_type": "compute-optimized",
+        "gpu": "false"
+      },
+      "deployment_nodes": {
+        "node_type": "general-purpose"
+      }
+    }
+  },
+  "mlops_features": {
+    "experiment_tracking": "MLflow integration",
+    "model_versioning": "Automatic versioning with metadata",
+    "artifact_management": "Kubeflow artifacts storage",
+    "pipeline_caching": "Component output caching enabled",
+    "parallel_execution": "Trio training parallelization",
+    "conditional_deployment": "Validation-gated deployment",
+    "monitoring": "Pipeline metrics and logging",
+    "rollback_capability": "Automatic rollback on failure"
+  },
+  "automation_features": {
+    "scheduled_execution": "Weekly re-training pipeline",
+    "event_driven_triggers": "Data threshold-based triggers",
+    "quality_gates": "Automated validation checkpoints",
+    "deployment_automation": "Zero-touch KServe deployment",
+    "notification_system": "Pipeline status notifications",
+    "error_handling": "Comprehensive error recovery"
+  },
+  "integration_points": {
+    "prometheus": "Historical metrics collection",
+    "mlflow": "Experiment tracking and model registry",
+    "kubeflow": "Pipeline orchestration and UI",
+    "kserve": "Model serving infrastructure",
+    "kubernetes": "Container orchestration",
+    "longhorn": "Distributed storage"
+  }
+}

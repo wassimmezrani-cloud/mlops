@@ -1,0 +1,9 @@
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# No emojis allowed in the codebase
+# This rule helps maintain professional code quality
+# Use descriptive text instead of emoji characters

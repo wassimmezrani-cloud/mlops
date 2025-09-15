@@ -1,0 +1,77 @@
+# Simple Test Experiment for ML-Scheduler
+
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: simple-ml-test
+  namespace: katib-system
+spec:
+  algorithm:
+    algorithmName: random
+  objective:
+    type: maximize
+    objectiveMetricName: accuracy
+  parameters:
+  - name: learning-rate
+    parameterType: double
+    feasibleSpace:
+      min: "0.01"
+      max: "0.1"
+  - name: batch-size
+    parameterType: int
+    feasibleSpace:
+      min: "16"
+      max: "64"
+  maxTrialCount: 5
+  parallelTrialCount: 2
+  trialTemplate:
+    primaryContainerName: training-container
+    trialParameters:
+    - name: learningRate
+      description: Learning rate
+      reference: learning-rate
+    - name: batchSize
+      description: Batch size
+      reference: batch-size
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            restartPolicy: Never
+            containers:
+            - name: training-container
+              image: python:3.9-slim
+              command:
+              - "bash"
+              - "-c"
+              args:
+              - |
+                echo "Starting ML training simulation..."
+                echo "Learning rate: ${learning_rate}"
+                echo "Batch size: ${batch_size}"
+                
+                # Simulate training
+                sleep 10
+                
+                # Generate random accuracy between 0.7 and 0.95
+                accuracy=$(python3 -c "import random; print(f'{random.uniform(0.7, 0.95):.4f}')")
+                echo "accuracy=${accuracy}"
+                echo "Training completed successfully!"
+              env:
+              - name: learning_rate
+                value: "${trialParameters.learningRate}"
+              - name: batch_size
+                value: "${trialParameters.batchSize}"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+  metricsCollectorSpec:
+    collector:
+      kind: StdOut
+    source:
+      filter:
+        metricsFormat:
+        - "accuracy=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"

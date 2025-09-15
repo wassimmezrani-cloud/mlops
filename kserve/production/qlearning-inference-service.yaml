@@ -1,0 +1,107 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qlearning-placement-optimizer
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: qlearning-optimizer
+    expert: l-optimiseur
+    version: v1.0.0
+  annotations:
+    serving.kserve.io/deploymentMode: Serverless
+    autoscaling.knative.dev/target: "30"
+    autoscaling.knative.dev/window: "60s"
+spec:
+  predictor:
+    serviceAccountName: kserve-sa
+    minReplicas: 1
+    maxReplicas: 3
+    scaleTarget: 30
+    scaleMetric: concurrency
+    containerConcurrency: 5
+    timeout: 45
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+        nvidia.com/gpu: "0"
+      limits:
+        cpu: 500m
+        memory: 1Gi
+        nvidia.com/gpu: "0"
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - ml-scheduler
+              - key: component
+                operator: In
+                values:
+                - qlearning-optimizer
+            topologyKey: kubernetes.io/hostname
+    nodeSelector:
+      node-type: compute-optimized
+    tolerations:
+    - key: "ml-workload"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+    sklearn:
+      modelUri: "gs://ml-scheduler-models/qlearning/v1.0.0/"
+      runtimeVersion: "1.10.0"
+      env:
+      - name: STORAGE_URI
+        value: "gs://ml-scheduler-models/qlearning/v1.0.0/"
+      - name: MODEL_NAME
+        value: "qlearning_placement_optimizer"
+      - name: SERVICE_TYPE
+        value: "placement-optimization"
+      - name: EXPERT_NAME
+        value: "L'Optimiseur"
+      - name: OPTIMIZATION_STRATEGY
+        value: "reinforcement-learning"
+      - name: ACTION_SPACE
+        value: "schedule,pending,reject"
+      - name: REWARD_FUNCTION
+        value: "resource-efficiency"
+      - name: METRICS_ENDPOINT
+        value: "/metrics"
+      - name: HEALTH_ENDPOINT
+        value: "/health"
+      - name: Q_TABLE_SIZE
+        value: "10000"
+      - name: LEARNING_RATE
+        value: "0.1"
+      - name: EXPLORATION_RATE
+        value: "0.05"
+    readinessProbe:
+      httpGet:
+        path: /v1/models/qlearning-placement-optimizer
+        port: 8080
+      initialDelaySeconds: 45
+      periodSeconds: 15
+      timeoutSeconds: 8
+      failureThreshold: 3
+      successThreshold: 1
+    livenessProbe:
+      httpGet:
+        path: /v1/models/qlearning-placement-optimizer
+        port: 8080
+      initialDelaySeconds: 90
+      periodSeconds: 45
+      timeoutSeconds: 15
+      failureThreshold: 3
+  canaryTrafficPercent: 15
+  annotations:
+    autoscaling.knative.dev/class: "hpa.autoscaling.knative.dev"
+    autoscaling.knative.dev/metric: "cpu"
+    autoscaling.knative.dev/targetUtilizationPercentage: "60"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    serving.kserve.io/enable-metric-aggregation: "true"

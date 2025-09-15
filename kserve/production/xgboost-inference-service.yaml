@@ -1,0 +1,97 @@
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: xgboost-load-predictor
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: xgboost-predictor
+    expert: le-prophete
+    version: v1.0.0
+  annotations:
+    serving.kserve.io/deploymentMode: Serverless
+    autoscaling.knative.dev/target: "50"
+    autoscaling.knative.dev/window: "60s"
+spec:
+  predictor:
+    serviceAccountName: kserve-sa
+    minReplicas: 2
+    maxReplicas: 5
+    scaleTarget: 50
+    scaleMetric: concurrency
+    containerConcurrency: 10
+    timeout: 30
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+        nvidia.com/gpu: "0"
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+        nvidia.com/gpu: "0"
+    affinity:
+      podAntiAffinity:
+        preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - ml-scheduler
+              - key: component
+                operator: In
+                values:
+                - xgboost-predictor
+            topologyKey: kubernetes.io/hostname
+    nodeSelector:
+      node-type: compute-optimized
+    tolerations:
+    - key: "ml-workload"
+      operator: "Equal"
+      value: "true"
+      effect: "NoSchedule"
+    sklearn:
+      modelUri: "gs://ml-scheduler-models/xgboost/v1.0.0/"
+      runtimeVersion: "1.10.0"
+      env:
+      - name: STORAGE_URI
+        value: "gs://ml-scheduler-models/xgboost/v1.0.0/"
+      - name: MODEL_NAME
+        value: "xgboost_load_predictor"
+      - name: SERVICE_TYPE
+        value: "load-prediction"
+      - name: EXPERT_NAME
+        value: "Le Prophete"
+      - name: PREDICTION_HORIZONS
+        value: "30m,1h,2h"
+      - name: METRICS_ENDPOINT
+        value: "/metrics"
+      - name: HEALTH_ENDPOINT
+        value: "/health"
+    readinessProbe:
+      httpGet:
+        path: /v1/models/xgboost-load-predictor
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+      successThreshold: 1
+    livenessProbe:
+      httpGet:
+        path: /v1/models/xgboost-load-predictor
+        port: 8080
+      initialDelaySeconds: 60
+      periodSeconds: 30
+      timeoutSeconds: 10
+      failureThreshold: 3
+  canaryTrafficPercent: 10
+  annotations:
+    autoscaling.knative.dev/class: "hpa.autoscaling.knative.dev"
+    autoscaling.knative.dev/metric: "cpu"
+    autoscaling.knative.dev/targetUtilizationPercentage: "70"
+    serving.kserve.io/enable-prometheus-scraping: "true"
+    serving.kserve.io/enable-metric-aggregation: "true"

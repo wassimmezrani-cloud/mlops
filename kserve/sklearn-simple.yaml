@@ -1,0 +1,29 @@
+# Isolation Forest "Le Détective" - Simplified InferenceService
+
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: isolation-anomaly-detector
+  namespace: ml-scheduler-prod
+  labels:
+    component: ml-scheduler
+    model: isolation-detective
+    version: optimized-v1.0
+spec:
+  predictor:
+    serviceAccountName: ml-scheduler-inference
+    minReplicas: 1
+    maxReplicas: 2
+    sklearn:
+      runtimeVersion: "1.3.0"
+      storageUri: "gs://kfserving-examples/models/sklearn/v1.3.0/iris"
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      env:
+      - name: MODEL_NAME
+        value: "isolation-anomaly-detector"

@@ -1,0 +1,194 @@
+# XGBoost "Le Prophète" - Hyperparameter Optimization Experiment
+
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: xgboost-load-predictor-optimization
+  namespace: kubeflow
+  labels:
+    component: ml-scheduler
+    model: xgboost-prophete
+    stage: hyperparameter-tuning
+spec:
+  algorithm:
+    algorithmName: tpe
+    algorithmSettings:
+    - name: "n_startup_trials"
+      value: "20"
+    - name: "n_ei_candidates"
+      value: "24"
+    - name: "random_state"
+      value: "42"
+  
+  objective:
+    type: maximize
+    goal: 0.95
+    objectiveMetricName: accuracy
+    additionalMetricNames:
+    - precision
+    - recall
+    - f1_score
+    - mae_cpu
+    - mae_memory
+    - inference_latency
+
+  parameters:
+  # Core XGBoost hyperparameters
+  - name: n_estimators
+    parameterType: int
+    feasibleSpace:
+      min: "100"
+      max: "1000"
+      step: "50"
+  - name: max_depth
+    parameterType: int
+    feasibleSpace:
+      min: "3"
+      max: "15" 
+      step: "1"
+  - name: learning_rate
+    parameterType: double
+    feasibleSpace:
+      min: "0.01"
+      max: "0.3"
+  - name: subsample
+    parameterType: double
+    feasibleSpace:
+      min: "0.6"
+      max: "1.0"
+  - name: colsample_bytree
+    parameterType: double
+    feasibleSpace:
+      min: "0.6"
+      max: "1.0"
+  - name: reg_alpha
+    parameterType: double
+    feasibleSpace:
+      min: "0.0"
+      max: "1.0"
+  - name: reg_lambda
+    parameterType: double
+    feasibleSpace:
+      min: "0.0"
+      max: "1.0"
+  - name: min_child_weight
+    parameterType: int
+    feasibleSpace:
+      min: "1"
+      max: "10"
+  # Time series specific parameters
+  - name: window_size
+    parameterType: int
+    feasibleSpace:
+      min: "30"
+      max: "120"
+      step: "15"
+  - name: prediction_horizon
+    parameterType: categorical
+    feasibleSpace:
+      list: ["30m", "1h", "2h"]
+  # Feature engineering parameters  
+  - name: feature_selection_k
+    parameterType: int
+    feasibleSpace:
+      min: "20"
+      max: "100"
+      step: "10"
+  - name: lag_features
+    parameterType: int
+    feasibleSpace:
+      min: "3"
+      max: "12"
+
+  parallelTrialCount: 8
+  maxTrialCount: 150
+  maxFailedTrialCount: 15
+
+  trialTemplate:
+    primaryContainerName: xgboost-training
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            restartPolicy: Never
+            containers:
+            - name: xgboost-training
+              image: hydatis.local/ml-scheduler/xgboost-trainer:v1.0.0
+              command:
+                - python3
+                - /app/xgboost_hyperopt.py
+              args:
+                - --n-estimators=${trialParameters.nEstimators}
+                - --max-depth=${trialParameters.maxDepth}
+                - --learning-rate=${trialParameters.learningRate}
+                - --subsample=${trialParameters.subsample}
+                - --colsample-bytree=${trialParameters.colsampleBytree}
+                - --reg-alpha=${trialParameters.regAlpha}
+                - --reg-lambda=${trialParameters.regLambda}
+                - --min-child-weight=${trialParameters.minChildWeight}
+                - --window-size=${trialParameters.windowSize}
+                - --prediction-horizon=${trialParameters.predictionHorizon}
+                - --feature-selection-k=${trialParameters.featureSelectionK}
+                - --lag-features=${trialParameters.lagFeatures}
+                - --data-path=/data/prometheus-metrics
+                - --output-dir=/output
+                - --mlflow-tracking-uri=http://mlflow-server.kubeflow.svc.cluster.local:5000
+                - --experiment-name=xgboost-load-predictor
+              env:
+              - name: CUDA_VISIBLE_DEVICES
+                value: "0"
+              - name: KATIB_EXPERIMENT_NAME
+                value: xgboost-load-predictor-optimization
+              - name: PROMETHEUS_URL
+                value: http://prometheus-server.monitoring.svc.cluster.local:9090
+              volumeMounts:
+              - name: data-volume
+                mountPath: /data
+              - name: output-volume
+                mountPath: /output
+              resources:
+                requests:
+                  cpu: 2
+                  memory: 4Gi
+                  nvidia.com/gpu: 1
+                limits:
+                  cpu: 4
+                  memory: 8Gi
+                  nvidia.com/gpu: 1
+            volumes:
+            - name: data-volume
+              persistentVolumeClaim:
+                claimName: ml-scheduler-data
+            - name: output-volume
+              persistentVolumeClaim:
+                claimName: katib-experiments-storage
+
+  metricsCollectorSpec:
+    collector:
+      kind: StdOut
+    source:
+      filter:
+        metricsFormat:
+        - "accuracy=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "precision=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"  
+        - "recall=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "f1_score=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "mae_cpu=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "mae_memory=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "inference_latency=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ml-scheduler-data
+  namespace: kubeflow
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 50Gi
+  storageClassName: longhorn

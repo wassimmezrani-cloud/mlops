@@ -1,0 +1,159 @@
+{
+  "pipeline_id": "exec_20250906_054129",
+  "status": "FAILED",
+  "components_results": {
+    "data_collection": {
+      "component": "data_collection",
+      "status": "SUCCESS",
+      "duration_seconds": 2.210735321044922,
+      "dataset_path": "./pipeline_executions/exec_20250906_054129/raw_dataset.parquet",
+      "records_collected": 600,
+      "nodes_monitored": 6,
+      "quality_metrics": {
+        "total_records": 600,
+        "unique_nodes": 6,
+        "time_span_hours": 720,
+        "data_completeness": 1.0,
+        "collection_success": true
+      },
+      "config": {
+        "prometheus_endpoint": "http://prometheus.monitoring.svc.cluster.local:9090",
+        "collection_period_days": 30,
+        "metrics_collected": [
+          "node_cpu_seconds_total",
+          "node_memory_MemAvailable_bytes",
+          "node_load1",
+          "kube_pod_info",
+          "container_cpu_usage_seconds_total"
+        ]
+      }
+    },
+    "preprocessing": {
+      "component": "preprocessing",
+      "status": "SUCCESS",
+      "duration_seconds": 1.2874364852905273,
+      "input_records": 600,
+      "output_records": 528,
+      "train_records": 422,
+      "validation_records": 106,
+      "features_created": 12,
+      "processed_dataset_path": "./pipeline_executions/exec_20250906_054129/processed_dataset.parquet",
+      "train_dataset_path": "./pipeline_executions/exec_20250906_054129/train_dataset.parquet",
+      "validation_dataset_path": "./pipeline_executions/exec_20250906_054129/validation_dataset.parquet",
+      "feature_names": [
+        "cpu_utilization",
+        "memory_utilization",
+        "load_1min",
+        "pod_count",
+        "disk_usage_percent",
+        "hour",
+        "day_of_week",
+        "is_business_hours",
+        "resource_pressure",
+        "load_efficiency",
+        "cpu_1h_avg",
+        "memory_1h_avg"
+      ]
+    },
+    "trio_training": {
+      "component": "trio_training",
+      "status": "SUCCESS",
+      "duration_seconds": 7.039389610290527,
+      "algorithms_trained": [
+        "xgboost",
+        "qlearning",
+        "isolation"
+      ],
+      "trio_results": {
+        "xgboost": {
+          "algorithm": "XGBoost",
+          "expert_name": "Le Proph\u00e8te",
+          "cpu_r2_score": 0.838350014736299,
+          "memory_r2_score": 0.9162471131997815,
+          "average_r2": 0.8772985639680402,
+          "business_score": 87.72985639680402,
+          "model_path": "./pipeline_executions/exec_20250906_054129/xgboost_model.pkl",
+          "training_samples": 422,
+          "validation_samples": 106
+        },
+        "qlearning": {
+          "algorithm": "Q-Learning",
+          "expert_name": "L'Optimiseur",
+          "accuracy": 0.8267041762337433,
+          "improvement_vs_random": 65.34083524674865,
+          "business_score": 100,
+          "model_path": "./pipeline_executions/exec_20250906_054129/qlearning_model.pkl",
+          "training_samples": 422,
+          "validation_samples": 106
+        },
+        "isolation": {
+          "algorithm": "Isolation Forest",
+          "expert_name": "Le D\u00e9tective",
+          "precision": 0.8840718188729993,
+          "recall": 0.8652075195734027,
+          "f1_score": 0.874537952539009,
+          "business_score": 87.4537952539009,
+          "model_path": "./pipeline_executions/exec_20250906_054129/isolation_model.pkl",
+          "training_samples": 422,
+          "validation_samples": 106
+        }
+      },
+      "average_business_score": 91.72788388356831,
+      "parallel_execution": true
+    },
+    "trio_validation": {
+      "component": "trio_validation",
+      "status": "SUCCESS",
+      "duration_seconds": 1.0153000354766846,
+      "individual_scores": {
+        "xgboost": {
+          "performance_metric": 0.8772985639680402,
+          "business_score": 87.72985639680402,
+          "meets_threshold": true
+        },
+        "qlearning": {
+          "performance_metric": 0.6534083524674865,
+          "business_score": 100,
+          "meets_threshold": true
+        },
+        "isolation": {
+          "performance_metric": 0.874537952539009,
+          "business_score": 87.4537952539009,
+          "meets_threshold": true
+        }
+      },
+      "models_meeting_threshold": 3,
+      "trio_integration_score": 100,
+      "fusion_test_samples": 50,
+      "avg_fusion_score": 0.6328052414718814,
+      "accept_rate": 0.6,
+      "go_no_go_decision": "GO",
+      "meets_performance_threshold": true,
+      "performance_thresholds": {
+        "xgboost_accuracy": 0.85,
+        "qlearning_improvement": 0.15,
+        "isolation_detection_rate": 0.85,
+        "trio_integration_score": 75.0
+      }
+    },
+    "kserve_deployment": {
+      "component": "kserve_deployment",
+      "status": "FAILED",
+      "error": "probabilities do not sum to 1",
+      "duration_seconds": 1.0006709098815918
+    }
+  },
+  "performance_metrics": {
+    "pipeline_duration_minutes": 0.20928345123926798,
+    "average_component_duration": 2.5107064723968504,
+    "trio_business_score": 91.72788388356831,
+    "integration_score": 100,
+    "deployment_success": false
+  },
+  "errors": [],
+  "total_duration_seconds": 12.557007074356079,
+  "successful_components": 4,
+  "total_components": 5,
+  "success_rate": 0.8,
+  "end_time": "2025-09-06T05:41:41.746479"
+}

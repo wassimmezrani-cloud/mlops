@@ -1,0 +1,32 @@
+# XGBoost "Le Prophète" - Simplified Production InferenceService
+
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: xgboost-load-predictor
+  namespace: ml-scheduler-prod
+  labels:
+    component: ml-scheduler
+    model: xgboost-prophete
+    version: optimized-v1.0
+spec:
+  predictor:
+    serviceAccountName: ml-scheduler-inference
+    minReplicas: 1
+    maxReplicas: 3
+    model:
+      modelFormat:
+        name: xgboost
+      runtime: kserve-xgbserver
+      runtimeVersion: "0.11.0"
+      storageUri: "gs://kfserving-examples/models/xgboost/iris"
+      resources:
+        requests:
+          cpu: 500m
+          memory: 1Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+      env:
+      - name: MODEL_NAME
+        value: "xgboost-load-predictor"

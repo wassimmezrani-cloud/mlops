@@ -1,0 +1,44 @@
+{
+  "pipeline_info": {
+    "name": "ml-scheduler-training-pipeline",
+    "version": "1.0.0",
+    "description": "ML-Scheduler Trio AI Training & Deployment Pipeline",
+    "created": "2025-09-05T22:44:07.614149"
+  },
+  "default_parameters": {
+    "prometheus_endpoint": "http://prometheus.monitoring.svc.cluster.local:9090",
+    "collection_period_days": 30,
+    "validation_split": 0.2,
+    "mlflow_tracking_uri": "http://mlflow.kubeflow.svc.cluster.local:5000",
+    "kserve_namespace": "ml-scheduler",
+    "auto_deployment": true,
+    "rollback_enabled": true
+  },
+  "resource_requirements": {
+    "data_collection": {
+      "cpu": "1",
+      "memory": "2Gi"
+    },
+    "preprocessing": {
+      "cpu": "2",
+      "memory": "4Gi"
+    },
+    "trio_training": {
+      "cpu": "4",
+      "memory": "8Gi"
+    },
+    "validation": {
+      "cpu": "2",
+      "memory": "4Gi"
+    },
+    "deployment": {
+      "cpu": "1",
+      "memory": "2Gi"
+    }
+  },
+  "scheduling": {
+    "weekly_schedule": "0 2 * * 0",
+    "manual_trigger": true,
+    "event_driven": true
+  }
+}

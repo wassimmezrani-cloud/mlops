@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    app: ml-scheduler
+    component: pipeline-monitoring
+  name: ml-scheduler-pipeline-metrics
+  namespace: ml-scheduler-monitoring
+spec:
+  endpoints:
+  - interval: 30s
+    path: /metrics
+    port: metrics
+  selector:
+    matchLabels:
+      app: ml-scheduler-pipeline

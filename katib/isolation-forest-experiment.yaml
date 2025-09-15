@@ -1,0 +1,332 @@
+# Isolation Forest "Le Détective" - Hyperparameter Optimization Experiment
+
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: isolation-anomaly-detector-optimization
+  namespace: kubeflow
+  labels:
+    component: ml-scheduler
+    model: isolation-detective
+    stage: hyperparameter-tuning
+spec:
+  algorithm:
+    algorithmName: random
+    algorithmSettings:
+    - name: "random_state"
+      value: "42"
+  
+  objective:
+    type: maximize
+    goal: 0.95
+    objectiveMetricName: precision_score
+    additionalMetricNames:
+    - recall_score
+    - f1_score
+    - roc_auc_score
+    - false_positive_rate
+    - detection_accuracy
+    - processing_time
+    - anomaly_detection_latency
+
+  parameters:
+  # Core Isolation Forest hyperparameters
+  - name: n_estimators
+    parameterType: int
+    feasibleSpace:
+      min: "50"
+      max: "300"
+      step: "25"
+  - name: max_samples
+    parameterType: double
+    feasibleSpace:
+      min: "0.5"
+      max: "1.0"
+  - name: contamination
+    parameterType: double
+    feasibleSpace:
+      min: "0.05"
+      max: "0.2"
+  - name: max_features
+    parameterType: double
+    feasibleSpace:
+      min: "0.5"
+      max: "1.0"
+  - name: bootstrap
+    parameterType: categorical
+    feasibleSpace:
+      list: ["True", "False"]
+  - name: random_state
+    parameterType: int
+    feasibleSpace:
+      min: "1"
+      max: "100"
+
+  # Feature Engineering Parameters
+  - name: feature_scaling
+    parameterType: categorical
+    feasibleSpace:
+      list: ["standard", "minmax", "robust", "none"]
+  - name: feature_selection_method
+    parameterType: categorical
+    feasibleSpace:
+      list: ["variance", "correlation", "mutual_info", "all"]
+  - name: time_window_minutes
+    parameterType: int
+    feasibleSpace:
+      min: "5"
+      max: "60"
+      step: "5"
+  - name: aggregation_method
+    parameterType: categorical
+    feasibleSpace:
+      list: ["mean", "median", "max", "percentile_95"]
+
+  # Data Preprocessing Parameters
+  - name: outlier_removal_threshold
+    parameterType: double
+    feasibleSpace:
+      min: "2.0"
+      max: "4.0"
+  - name: missing_value_strategy
+    parameterType: categorical
+    feasibleSpace:
+      list: ["mean", "median", "forward_fill", "interpolate"]
+  - name: feature_engineering_lag
+    parameterType: int
+    feasibleSpace:
+      min: "1"
+      max: "10"
+      step: "1"
+
+  # Model Ensemble Parameters
+  - name: ensemble_method
+    parameterType: categorical
+    feasibleSpace:
+      list: ["single", "voting", "stacking", "bagging"]
+  - name: voting_strategy
+    parameterType: categorical
+    feasibleSpace:
+      list: ["hard", "soft"]
+  - name: ensemble_size
+    parameterType: int
+    feasibleSpace:
+      min: "3"
+      max: "10"
+      step: "1"
+
+  # Anomaly Detection Thresholds
+  - name: anomaly_threshold_method
+    parameterType: categorical
+    feasibleSpace:
+      list: ["percentile", "std_dev", "iqr", "adaptive"]
+  - name: anomaly_percentile
+    parameterType: double
+    feasibleSpace:
+      min: "0.05"
+      max: "0.25"
+  - name: std_dev_multiplier
+    parameterType: double
+    feasibleSpace:
+      min: "2.0"
+      max: "4.0"
+
+  # Real-time Processing Parameters
+  - name: batch_processing_size
+    parameterType: int
+    feasibleSpace:
+      min: "100"
+      max: "1000"
+      step: "100"
+  - name: processing_frequency_seconds
+    parameterType: int
+    feasibleSpace:
+      min: "30"
+      max: "300"
+      step: "30"
+
+  parallelTrialCount: 4
+  maxTrialCount: 80
+  maxFailedTrialCount: 8
+
+  trialTemplate:
+    primaryContainerName: isolation-forest-training
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            restartPolicy: Never
+            containers:
+            - name: isolation-forest-training
+              image: hydatis.local/ml-scheduler/isolation-forest-trainer:v1.0.0
+              command:
+                - python3
+                - /app/isolation_forest_hyperopt.py
+              args:
+                - --n-estimators=${trialParameters.nEstimators}
+                - --max-samples=${trialParameters.maxSamples}
+                - --contamination=${trialParameters.contamination}
+                - --max-features=${trialParameters.maxFeatures}
+                - --bootstrap=${trialParameters.bootstrap}
+                - --random-state=${trialParameters.randomState}
+                - --feature-scaling=${trialParameters.featureScaling}
+                - --feature-selection-method=${trialParameters.featureSelectionMethod}
+                - --time-window-minutes=${trialParameters.timeWindowMinutes}
+                - --aggregation-method=${trialParameters.aggregationMethod}
+                - --outlier-removal-threshold=${trialParameters.outlierRemovalThreshold}
+                - --missing-value-strategy=${trialParameters.missingValueStrategy}
+                - --feature-engineering-lag=${trialParameters.featureEngineeringLag}
+                - --ensemble-method=${trialParameters.ensembleMethod}
+                - --voting-strategy=${trialParameters.votingStrategy}
+                - --ensemble-size=${trialParameters.ensembleSize}
+                - --anomaly-threshold-method=${trialParameters.anomalyThresholdMethod}
+                - --anomaly-percentile=${trialParameters.anomalyPercentile}
+                - --std-dev-multiplier=${trialParameters.stdDevMultiplier}
+                - --batch-processing-size=${trialParameters.batchProcessingSize}
+                - --processing-frequency-seconds=${trialParameters.processingFrequencySeconds}
+                - --training-data=/data/node-anomaly-dataset
+                - --validation-data=/data/node-anomaly-validation
+                - --output-dir=/output
+                - --mlflow-tracking-uri=http://mlflow-server.kubeflow.svc.cluster.local:5000
+                - --experiment-name=isolation-anomaly-detector
+                - --enable-cross-validation
+                - --cv-folds=5
+              env:
+              - name: KATIB_EXPERIMENT_NAME
+                value: isolation-anomaly-detector-optimization
+              - name: PYTHONPATH
+                value: "/app:/app/lib"
+              - name: PROMETHEUS_URL
+                value: http://prometheus-server.monitoring.svc.cluster.local:9090
+              - name: NODE_EXPORTER_METRICS
+                value: "cpu,memory,disk,network,load"
+              volumeMounts:
+              - name: data-volume
+                mountPath: /data
+              - name: output-volume
+                mountPath: /output
+              - name: cache-volume
+                mountPath: /tmp/cache
+              resources:
+                requests:
+                  cpu: 2
+                  memory: 4Gi
+                limits:
+                  cpu: 4
+                  memory: 8Gi
+            volumes:
+            - name: data-volume
+              persistentVolumeClaim:
+                claimName: ml-scheduler-data
+            - name: output-volume
+              persistentVolumeClaim:
+                claimName: katib-experiments-storage
+            - name: cache-volume
+              emptyDir:
+                sizeLimit: 2Gi
+
+  metricsCollectorSpec:
+    collector:
+      kind: StdOut
+    source:
+      filter:
+        metricsFormat:
+        - "precision_score=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "recall_score=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "f1_score=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "roc_auc_score=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "false_positive_rate=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "detection_accuracy=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "processing_time=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "anomaly_detection_latency=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+
+---
+# Data Collection Job for Isolation Forest training
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: isolation-forest-data-collection
+  namespace: kubeflow
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: data-collector
+        image: hydatis.local/ml-scheduler/data-collector:v1.0.0
+        command:
+          - python3
+          - /app/collect_node_metrics.py
+        args:
+          - --prometheus-url=http://prometheus-server.monitoring.svc.cluster.local:9090
+          - --output-path=/data/node-anomaly-dataset
+          - --collection-days=30
+          - --metrics-interval=30s
+          - --include-historical-anomalies
+          - --label-known-failures
+        env:
+        - name: PROMETHEUS_URL
+          value: http://prometheus-server.monitoring.svc.cluster.local:9090
+        volumeMounts:
+        - name: data-volume
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 1
+            memory: 2Gi
+          limits:
+            cpu: 2
+            memory: 4Gi
+      volumes:
+      - name: data-volume
+        persistentVolumeClaim:
+          claimName: ml-scheduler-data
+
+---
+# Grafana Dashboard for Isolation Forest monitoring
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: isolation-forest-dashboard
+  namespace: kubeflow
+data:
+  dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Isolation Forest Anomaly Detection - Hyperparameter Optimization",
+        "panels": [
+          {
+            "title": "Precision Score Over Trials",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "katib_experiment_precision_score{experiment_name=\"isolation-anomaly-detector-optimization\"}",
+                "legendFormat": "Precision Score"
+              }
+            ]
+          },
+          {
+            "title": "False Positive Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "katib_experiment_false_positive_rate{experiment_name=\"isolation-anomaly-detector-optimization\"}",
+                "legendFormat": "FP Rate"
+              }
+            ]
+          },
+          {
+            "title": "Processing Time Distribution",
+            "type": "histogram",
+            "targets": [
+              {
+                "expr": "katib_experiment_processing_time{experiment_name=\"isolation-anomaly-detector-optimization\"}",
+                "legendFormat": "Processing Time (ms)"
+              }
+            ]
+          }
+        ]
+      }
+    }

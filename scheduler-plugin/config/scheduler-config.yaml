@@ -1,0 +1,206 @@
+# ML-Scheduler Production Configuration
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ml-scheduler-config
+  namespace: kube-system
+data:
+  config.yaml: |
+    # ML-Scheduler Plugin Configuration
+    pluginName: "MLScheduler"
+    pluginWeight: 100
+    enableProfile: true
+    
+    # ML Service endpoints (production KServe services)
+    xgboostEndpoint: "http://xgboost-load-predictor-predictor-00001.ml-scheduler-prod.svc.cluster.local/v1/models/xgboost-load-predictor:predict"
+    qlearningEndpoint: "http://qlearning-placement-optimizer-predictor-00001.ml-scheduler-prod.svc.cluster.local/v1/models/qlearning-placement-optimizer:predict"
+    isolationEndpoint: "http://isolation-anomaly-detector-predictor-00001.ml-scheduler-prod.svc.cluster.local/v1/models/isolation-anomaly-detector:predict"
+    
+    # HTTP client configuration
+    httpTimeout: 30s
+    maxRetries: 3
+    retryDelay: 100ms
+    connectionTimeout: 10s
+    maxIdleConns: 100
+    maxIdleConnsHost: 10
+    
+    # Circuit breaker configuration
+    circuitBreaker:
+      maxRequests: 10
+      interval: 30s
+      timeout: 60s
+      failureThreshold: 5
+      successThreshold: 3
+      onStateChange: true
+    
+    # Decision fusion configuration
+    fusionWeights:
+      xgboostWeight: 0.4
+      qlearningWeight: 0.4
+      isolationWeight: 0.2
+      normalizeWeights: true
+      
+    confidenceThresholds:
+      xgboost: 0.75
+      qlearning: 0.6
+      isolation: 0.8
+      
+    fallbackPolicy:
+      enableFallback: true
+      fallbackTimeout: 5s
+      minServicesRequired: 1
+      useKubernetesDefault: true
+      cacheLastDecisions: true
+      cacheTTL: 5m
+    
+    # Performance configuration
+    metricsEnabled: true
+    metricsPort: 8080
+    healthCheckPort: 8081
+    decisionTimeout: 200ms
+    concurrentRequests: 100
+    
+    # Business logic configuration
+    resourceOptimizationWeight: 0.3
+    loadBalancingWeight: 0.3
+    anomalyAvoidanceWeight: 0.4
+    performancePenaltyFactor: 0.1
+    
+    # Logging and debugging
+    logLevel: "info"
+    enableTracing: true
+    tracingEndpoint: "http://jaeger-collector.monitoring.svc.cluster.local:14268/api/traces"
+
+---
+# Scheduler Plugin Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ml-scheduler-plugin
+  namespace: kube-system
+  labels:
+    app: ml-scheduler-plugin
+    component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ml-scheduler-plugin
+  template:
+    metadata:
+      labels:
+        app: ml-scheduler-plugin
+        component: scheduler
+    spec:
+      serviceAccountName: ml-scheduler-plugin
+      containers:
+      - name: ml-scheduler
+        image: hydatis.local/ml-scheduler/scheduler-plugin:v1.0.0
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: metrics
+        - containerPort: 8081
+          name: health
+        env:
+        - name: KUBECONFIG
+          value: /etc/kubernetes/scheduler.conf
+        - name: CONFIG_PATH
+          value: /etc/ml-scheduler/config.yaml
+        volumeMounts:
+        - name: config
+          mountPath: /etc/ml-scheduler
+          readOnly: true
+        - name: kubeconfig
+          mountPath: /etc/kubernetes
+          readOnly: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8081
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: config
+        configMap:
+          name: ml-scheduler-config
+      - name: kubeconfig
+        hostPath:
+          path: /etc/kubernetes
+
+---
+# Service Account for ML Scheduler Plugin
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ml-scheduler-plugin
+  namespace: kube-system
+
+---
+# ClusterRole for scheduler plugin
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: ml-scheduler-plugin
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes", "namespaces"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+- apiGroups: ["coordination.k8s.io"]
+  resources: ["leases"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+- apiGroups: ["scheduling.k8s.io"]
+  resources: ["priorityclasses"]
+  verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: ml-scheduler-plugin
+subjects:
+- kind: ServiceAccount
+  name: ml-scheduler-plugin
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: ml-scheduler-plugin
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# Service for metrics
+apiVersion: v1
+kind: Service
+metadata:
+  name: ml-scheduler-plugin-metrics
+  namespace: kube-system
+  labels:
+    app: ml-scheduler-plugin
+spec:
+  selector:
+    app: ml-scheduler-plugin
+  ports:
+  - name: metrics
+    port: 8080
+    targetPort: 8080
+  - name: health
+    port: 8081
+    targetPort: 8081

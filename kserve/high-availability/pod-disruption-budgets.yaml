@@ -1,0 +1,44 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: xgboost-predictor-pdb
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: xgboost-predictor
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ml-scheduler
+      component: xgboost-predictor
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: qlearning-optimizer-pdb
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: qlearning-optimizer
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ml-scheduler
+      component: qlearning-optimizer
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: isolation-detector-pdb
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: isolation-detector
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ml-scheduler
+      component: isolation-detector

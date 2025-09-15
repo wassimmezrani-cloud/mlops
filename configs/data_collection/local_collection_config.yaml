@@ -1,0 +1,70 @@
+# ML-Scheduler Data Collection Configuration - Local Storage
+# MLOps Lifecycle - Etape 3 Configuration
+
+prometheus:
+  url: "http://10.110.190.83:9090"
+  timeout: 30
+  retry_attempts: 3
+
+collection:
+  # Periode de collecte (jours)
+  default_period_days: 1
+  minimum_required_days: 1
+  
+  # Resolution temporelle
+  step_interval: "1m"  # 1 minute resolution
+  
+  # Metriques critiques nodes
+  node_metrics:
+    - name: "node_cpu_seconds_total"
+      type: "rate"
+      critical: true
+      description: "CPU usage par mode et node"
+    - name: "node_memory_MemAvailable_bytes" 
+      type: "instant"
+      critical: true
+      description: "Memoire disponible par node"
+    - name: "node_memory_MemTotal_bytes"
+      type: "instant" 
+      critical: true
+      description: "Memoire totale par node"
+    - name: "node_load1"
+      type: "instant"
+      critical: true
+      description: "Load average 1 minute"
+    - name: "node_load5"
+      type: "instant"
+      critical: true  
+      description: "Load average 5 minutes"
+  
+  # Metriques critiques pods/containers
+  container_metrics:
+    - name: "container_cpu_usage_seconds_total"
+      type: "rate"
+      critical: true
+      description: "CPU usage par container"
+    - name: "container_memory_usage_bytes"
+      type: "instant"
+      critical: true
+      description: "Memory usage par container"
+    - name: "kube_pod_info"
+      type: "instant"
+      critical: true
+      description: "Metadata pods"
+
+storage:
+  # Chemins stockage donnees locaux
+  base_path: "./data/historical"
+  nodes_path: "./data/historical/nodes"
+  pods_path: "./data/historical/pods"
+  events_path: "./data/historical/events"
+  
+  # Format fichiers
+  output_format: "parquet"
+  compression: "snappy"
+  
+quality:
+  # Seuils qualite donnees
+  minimum_coverage_percentage: 80
+  minimum_quality_score: 75
+  maximum_missing_data_percentage: 25

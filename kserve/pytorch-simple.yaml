@@ -1,0 +1,29 @@
+# Q-Learning "L'Optimiseur" - Simplified InferenceService
+
+apiVersion: serving.kserve.io/v1beta1
+kind: InferenceService
+metadata:
+  name: qlearning-placement-optimizer
+  namespace: ml-scheduler-prod
+  labels:
+    component: ml-scheduler
+    model: qlearning-optimiseur
+    version: optimized-v1.0
+spec:
+  predictor:
+    serviceAccountName: ml-scheduler-inference
+    minReplicas: 1
+    maxReplicas: 2
+    pytorch:
+      runtimeVersion: "1.13.1"
+      storageUri: "gs://kfserving-examples/models/torchserve/image_classifier/v1"
+      resources:
+        requests:
+          cpu: "1"
+          memory: 2Gi
+        limits:
+          cpu: "2"
+          memory: 4Gi
+      env:
+      - name: MODEL_NAME
+        value: "qlearning-placement-optimizer"

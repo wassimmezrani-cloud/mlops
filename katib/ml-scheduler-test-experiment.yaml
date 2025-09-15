@@ -1,0 +1,167 @@
+# Test Experiment for ML-Scheduler Hyperparameter Optimization
+
+apiVersion: kubeflow.org/v1beta1
+kind: Experiment
+metadata:
+  name: ml-scheduler-hyperopt-test
+  namespace: katib-system
+  labels:
+    component: ml-scheduler
+    stage: hyperparameter-testing
+spec:
+  algorithm:
+    algorithmName: random
+    algorithmSettings:
+    - name: "random_state"
+      value: "42"
+  
+  objective:
+    type: maximize
+    goal: 0.90
+    objectiveMetricName: model_accuracy
+    additionalMetricNames:
+    - training_loss
+    - validation_score
+    - inference_latency
+
+  parameters:
+  # XGBoost-like parameters
+  - name: n_estimators
+    parameterType: int
+    feasibleSpace:
+      min: "50"
+      max: "200"
+      step: "25"
+  - name: max_depth
+    parameterType: int
+    feasibleSpace:
+      min: "3"
+      max: "10"
+  - name: learning_rate
+    parameterType: double
+    feasibleSpace:
+      min: "0.01"
+      max: "0.3"
+  
+  # Neural network-like parameters  
+  - name: hidden_units
+    parameterType: categorical
+    feasibleSpace:
+      list: ["64", "128", "256"]
+  - name: dropout_rate
+    parameterType: double
+    feasibleSpace:
+      min: "0.0"
+      max: "0.5"
+
+  maxTrialCount: 10
+  parallelTrialCount: 3
+
+  trialTemplate:
+    primaryContainerName: ml-training
+    trialParameters:
+    - name: nEstimators
+      description: Number of estimators
+      reference: n_estimators
+    - name: maxDepth
+      description: Maximum depth
+      reference: max_depth
+    - name: learningRate
+      description: Learning rate
+      reference: learning_rate
+    - name: hiddenUnits
+      description: Hidden units
+      reference: hidden_units
+    - name: dropoutRate
+      description: Dropout rate
+      reference: dropout_rate
+    trialSpec:
+      apiVersion: batch/v1
+      kind: Job
+      spec:
+        template:
+          spec:
+            restartPolicy: Never
+            containers:
+            - name: ml-training
+              image: python:3.9-slim
+              command:
+              - "python3"
+              - "-c"
+              args:
+              - |
+                import random
+                import time
+                import sys
+                
+                # Parse hyperparameters
+                n_estimators = int(sys.argv[1])
+                max_depth = int(sys.argv[2])
+                learning_rate = float(sys.argv[3])
+                hidden_units = int(sys.argv[4])
+                dropout_rate = float(sys.argv[5])
+                
+                print(f"Starting training with hyperparameters:")
+                print(f"  n_estimators: {n_estimators}")
+                print(f"  max_depth: {max_depth}")
+                print(f"  learning_rate: {learning_rate}")
+                print(f"  hidden_units: {hidden_units}")
+                print(f"  dropout_rate: {dropout_rate}")
+                
+                # Simulate training process
+                print("Training in progress...")
+                time.sleep(random.uniform(10, 30))  # Simulate training time
+                
+                # Generate realistic metrics based on hyperparameters
+                base_accuracy = 0.70
+                
+                # Better hyperparameters should give better results
+                if learning_rate > 0.05 and learning_rate < 0.15:
+                    base_accuracy += 0.1
+                if max_depth >= 5 and max_depth <= 8:
+                    base_accuracy += 0.05
+                if n_estimators >= 100:
+                    base_accuracy += 0.05
+                if hidden_units >= 128:
+                    base_accuracy += 0.03
+                if dropout_rate > 0.1 and dropout_rate < 0.3:
+                    base_accuracy += 0.02
+                
+                # Add some randomness
+                model_accuracy = base_accuracy + random.uniform(-0.1, 0.1)
+                model_accuracy = max(0.5, min(0.95, model_accuracy))  # Clamp between 0.5 and 0.95
+                
+                training_loss = random.uniform(0.1, 0.5)
+                validation_score = model_accuracy - random.uniform(0.0, 0.05)
+                inference_latency = random.uniform(10, 100)  # milliseconds
+                
+                # Output metrics in required format
+                print(f"model_accuracy={model_accuracy:.4f}")
+                print(f"training_loss={training_loss:.4f}")  
+                print(f"validation_score={validation_score:.4f}")
+                print(f"inference_latency={inference_latency:.2f}")
+                
+                print("Training completed successfully!")
+              - "${trialParameters.nEstimators}"
+              - "${trialParameters.maxDepth}"
+              - "${trialParameters.learningRate}"
+              - "${trialParameters.hiddenUnits}"
+              - "${trialParameters.dropoutRate}"
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+
+  metricsCollectorSpec:
+    collector:
+      kind: StdOut
+    source:
+      filter:
+        metricsFormat:
+        - "model_accuracy=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "training_loss=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "validation_score=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"
+        - "inference_latency=([-+]?[0-9]*\\.?[0-9]+([eE][-+]?[0-9]+)?)"

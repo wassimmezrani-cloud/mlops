@@ -1,0 +1,222 @@
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: ml-scheduler-mtls
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: security
+spec:
+  selector:
+    matchLabels:
+      app: ml-scheduler
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: ml-scheduler-authz
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: authorization
+spec:
+  selector:
+    matchLabels:
+      app: ml-scheduler
+  action: ALLOW
+  rules:
+  # Allow health checks from any source
+  - to:
+    - operation:
+        paths: ["/health", "/readiness", "/liveness"]
+        methods: ["GET"]
+  # Allow metrics collection from monitoring namespace
+  - from:
+    - source:
+        namespaces: ["monitoring", "istio-system"]
+    to:
+    - operation:
+        paths: ["/metrics", "/stats/prometheus"]
+        methods: ["GET"]
+  # Allow model inference from authorized sources
+  - from:
+    - source:
+        namespaces: ["kube-system", "ml-scheduler"]
+    - source:
+        principals: ["cluster.local/ns/ml-scheduler/sa/kserve-sa"]
+    to:
+    - operation:
+        paths: ["/v1/models/*", "/v1/predict", "/v1/explain"]
+        methods: ["POST", "GET"]
+  # Allow administrative operations from specific service accounts
+  - from:
+    - source:
+        principals: ["cluster.local/ns/ml-scheduler/sa/ml-scheduler-admin"]
+    to:
+    - operation:
+        paths: ["/admin/*", "/v1/models"]
+        methods: ["GET", "POST", "PUT", "DELETE"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: xgboost-specific-authz
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: xgboost-authorization
+spec:
+  selector:
+    matchLabels:
+      component: xgboost-predictor
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces: ["kube-system"]
+        principals: ["cluster.local/ns/kube-system/sa/scheduler"]
+    - source:
+        namespaces: ["ml-scheduler"]
+    to:
+    - operation:
+        paths: ["/v1/models/xgboost-load-predictor:predict"]
+        methods: ["POST"]
+    when:
+    - key: request.headers[content-type]
+      values: ["application/json"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: qlearning-specific-authz
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: qlearning-authorization
+spec:
+  selector:
+    matchLabels:
+      component: qlearning-optimizer
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces: ["kube-system"]
+        principals: ["cluster.local/ns/kube-system/sa/scheduler"]
+    - source:
+        namespaces: ["ml-scheduler"]
+    to:
+    - operation:
+        paths: ["/v1/models/qlearning-placement-optimizer:predict"]
+        methods: ["POST"]
+    when:
+    - key: request.headers[content-type]
+      values: ["application/json"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: isolation-specific-authz
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: isolation-authorization
+spec:
+  selector:
+    matchLabels:
+      component: isolation-detector
+  action: ALLOW
+  rules:
+  - from:
+    - source:
+        namespaces: ["kube-system"]
+        principals: ["cluster.local/ns/kube-system/sa/scheduler"]
+    - source:
+        namespaces: ["ml-scheduler"]
+    to:
+    - operation:
+        paths: ["/v1/models/isolation-anomaly-detector:predict"]
+        methods: ["POST"]
+    when:
+    - key: request.headers[content-type]
+      values: ["application/json"]
+---
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: ml-scheduler-jwt
+  namespace: ml-scheduler
+  labels:
+    app: ml-scheduler
+    component: jwt-authentication
+spec:
+  selector:
+    matchLabels:
+      app: ml-scheduler
+  jwtRules:
+  - issuer: "ml-scheduler.hydatis.local"
+    jwksUri: "https://ml-scheduler.hydatis.local/.well-known/jwks.json"
+    audiences:
+    - "ml-scheduler-api"
+    - "kubernetes-scheduler"
+    forwardOriginalToken: true
+    fromHeaders:
+    - name: "Authorization"
+      prefix: "Bearer "
+    fromParams:
+    - "token"
+    outputPayloadToHeader: "x-jwt-payload"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ml-scheduler-tls-cert
+  namespace: istio-system
+  labels:
+    app: ml-scheduler
+    component: tls-certificate
+type: kubernetes.io/tls
+data:
+  tls.crt: ""  # Base64 encoded TLS certificate
+  tls.key: ""  # Base64 encoded TLS private key
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: xgboost-tls-cert
+  namespace: istio-system
+  labels:
+    app: ml-scheduler
+    component: xgboost-tls
+type: kubernetes.io/tls
+data:
+  tls.crt: ""
+  tls.key: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: qlearning-tls-cert
+  namespace: istio-system
+  labels:
+    app: ml-scheduler
+    component: qlearning-tls
+type: kubernetes.io/tls
+data:
+  tls.crt: ""
+  tls.key: ""
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: isolation-tls-cert
+  namespace: istio-system
+  labels:
+    app: ml-scheduler
+    component: isolation-tls
+type: kubernetes.io/tls
+data:
+  tls.crt: ""
+  tls.key: ""
