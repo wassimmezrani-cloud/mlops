@@ -30,22 +30,29 @@ venv/
 ENV/
 env/
 .venv/
+.env
 
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# PyCharm
+# IDE
 .idea/
-
-# VSCode
 .vscode/
+*.swp
+*.swo
 
 # MLflow
 mlruns/
+artifacts/
 
 # Modèles et données
 models/*/
+models/*.pkl
+models/*.joblib
 data/*/
+data/*.csv
+data/*.parquet
+experiments/*/
 *.pkl
 *.joblib
 *.h5
@@ -54,6 +61,7 @@ data/*/
 # Logs
 *.log
 logs/
+logs/*.log
 
 # Fichiers temporaires
 .tmp/
@@ -84,3 +92,8 @@ Thumbs.db
 *.bak
 *.backup
 *~
+
+# Documentation spécifique
+CLAUDE.md
+requirements.txt
+docs/infrastructure-audit-report.md

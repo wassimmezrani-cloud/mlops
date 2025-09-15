@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mlflow-config
+  namespace: wassimmezrani
+  labels:
+    app: ml-scheduler
+data:
+  MLFLOW_TRACKING_URI: "http://mlflow-server.kubeflow.svc.cluster.local:5000"
+  MLFLOW_BACKEND_STORE_URI: "mysql://mlflow-mysql.kubeflow.svc.cluster.local:3306/mlflow"
+  MLFLOW_DEFAULT_ARTIFACT_ROOT: "/models"

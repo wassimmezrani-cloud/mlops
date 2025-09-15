@@ -1,0 +1,48 @@
+apiVersion: kubeflow.org/v1
+kind: Notebook
+metadata:
+  name: ml-scheduler
+  namespace: wassimmezrani
+  labels:
+    app: ml-scheduler
+spec:
+  template:
+    spec:
+      containers:
+      - name: ml-scheduler
+        image: charmedkubeflow/jupyter-scipy:1.10.0-0be57a5
+        resources:
+          requests:
+            cpu: "4"
+            memory: 8Gi
+          limits:
+            cpu: 4800m
+            memory: 10307921510400m
+        volumeMounts:
+        - mountPath: /dev/shm
+          name: dshm
+        - mountPath: /home/jovyan
+          name: ml-scheduler-workspace
+        - mountPath: /data
+          name: ml-historical-data
+        - mountPath: /models
+          name: ml-models-storage
+        - mountPath: /experiments
+          name: ml-experiments
+      serviceAccountName: default-editor
+      volumes:
+      - emptyDir:
+          medium: Memory
+        name: dshm
+      - name: ml-scheduler-workspace
+        persistentVolumeClaim:
+          claimName: ml-scheduler-workspace
+      - name: ml-historical-data
+        persistentVolumeClaim:
+          claimName: ml-historical-data
+      - name: ml-models-storage
+        persistentVolumeClaim:
+          claimName: ml-models-storage
+      - name: ml-experiments
+        persistentVolumeClaim:
+          claimName: ml-experiments

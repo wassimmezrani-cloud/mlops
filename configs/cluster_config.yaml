@@ -1,0 +1,41 @@
+hydatis_cluster:
+  name: "HYDATIS"
+  version: "1.32.7"
+  
+  prometheus:
+    internal_url: "http://prometheus-k8s.monitoring.svc.cluster.local:9090"
+    external_url: "http://10.110.190.83:9090"
+    
+  nodes:
+    masters:
+      - name: "master1"
+        ip: "10.110.190.32"
+        role: "control-plane"
+      - name: "master2" 
+        ip: "10.110.190.33"
+        role: "control-plane"
+      - name: "master3"
+        ip: "10.110.190.34"
+        role: "control-plane"
+        
+    workers:
+      - name: "worker1"
+        ip: "10.110.190.35"
+        role: "worker"
+      - name: "worker2"
+        ip: "10.110.190.36" 
+        role: "worker"
+      - name: "worker3"
+        ip: "10.110.190.37"
+        role: "worker"
+        
+  namespaces:
+    jupyter: "wassimmezrani"
+    monitoring: "monitoring"
+    kubeflow: "kubeflow"
+    
+  services:
+    grafana: "http://10.110.190.84:3000"
+    alertmanager: "http://10.110.190.85:9093"
+    kubeflow_gateway: "http://10.110.190.82"
+    mlflow: "http://10.110.190.86:5000"
